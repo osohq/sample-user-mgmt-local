@@ -1,0 +1,311 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { useFormStatus, useFormState } from "react-dom";
+import Link from "next/link";
+
+import { User, Org, Role } from "@/lib/relations";
+
+import {
+  createUser,
+  createOrg,
+  editUserRole,
+  deleteUser,
+  saveAllAssignments,
+} from "./actions";
+
+function SubmitButton({ action }: { action: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending}>
+      {pending ? "Saving..." : action}
+    </button>
+  );
+}
+
+interface CreateUserFormProps {
+  organizations: Org[];
+  roles: Role[];
+}
+
+export function CreateUserForm({ organizations, roles }: CreateUserFormProps) {
+  const [username, setUsername] = useState<string>("");
+  const [organization, setOrganization] = useState<string>(
+    organizations[0].name,
+  );
+  const [role, setRole] = useState<string>(roles[0].name);
+  const [formState, formAction] = useFormState(createUser, null);
+
+  useEffect(() => {
+    if (formState?.success) {
+      // Refresh the page if the form submission was successful
+      window.location.reload();
+    }
+  }, [formState?.success]);
+
+  return (
+    <form action={formAction}>
+      <div>
+        <label htmlFor="username">Username:</label>
+        <input
+          id="username"
+          type="text"
+          name="username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          required
+        />
+      </div>
+      <div>
+        <label htmlFor="organization">Organization:</label>
+        <select
+          id="organization"
+          name="organization"
+          value={organization}
+          onChange={(e) => setOrganization(e.target.value)}
+          required
+        >
+          {organizations.map((org) => (
+            <option key={org.name} value={org.name}>
+              {org.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label htmlFor="role">Role:</label>
+        <select
+          id="role"
+          name="role"
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+          required
+        >
+          {roles.map((role) => (
+            <option key={role.name} value={role.name}>
+              {role.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <SubmitButton action="Create user" />
+    </form>
+  );
+}
+
+export function CreateOrgForm() {
+  const [orgName, setOrgName] = useState<string>("");
+  const [formState, formAction] = useFormState(createOrg, null);
+
+  useEffect(() => {
+    if (formState?.success) {
+      // Refresh the page if the form submission was successful
+      window.location.reload();
+    }
+  }, [formState?.success]);
+
+  return (
+    <form action={formAction}>
+      <div>
+        <label htmlFor="orgName">Name:</label>
+        <input
+          id="orgName"
+          type="text"
+          name="orgName"
+          value={orgName}
+          onChange={(e) => setOrgName(e.target.value)}
+          required
+        />
+      </div>
+      <SubmitButton action="Add org" />
+    </form>
+  );
+}
+
+export type UsersWPermissions = {
+  username: string;
+  org: string;
+  role: string;
+  edit: boolean;
+  delete: boolean;
+};
+
+interface ManageUsersFormProps {
+  users: UsersWPermissions[];
+  roles: Role[];
+}
+
+interface FormData {
+  username: string;
+  org: string;
+  roleOriginal: string;
+  roleCurr: string;
+  edit: boolean;
+  delete: boolean;
+  onInputChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
+  users,
+  roles,
+}) => {
+  const [formData, setFormData] = useState<FormData[]>(
+    users.map((user, index) => ({
+      username: user.username,
+      org: user.org,
+      roleOriginal: user.role,
+      roleCurr: user.role,
+      edit: user.edit,
+      delete: user.delete,
+      onInputChange: (e) => handleInputChange(e, index),
+      onEdit: () => handleEdit(index),
+      onDelete: () => handleDelete(index),
+    })),
+  );
+
+  const orgUsersMap: Map<string, FormData[]> = new Map();
+  // Group users by org
+  formData.forEach((user) => {
+    if (!orgUsersMap.has(user.org)) {
+      orgUsersMap.set(user.org, []);
+    }
+    orgUsersMap.get(user.org)!.push(user);
+  });
+
+  // Sort the org keys alphabetically
+  const sortedOrgs = Array.from(orgUsersMap.keys()).sort((a, b) =>
+    a.toLowerCase().localeCompare(b.toLowerCase()),
+  );
+
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLSelectElement>,
+    index: number,
+  ) => {
+    const newFormData = [...formData];
+    newFormData[index].roleCurr = e.target.value;
+    setFormData(newFormData);
+  };
+
+  function validateFormData(exceptIndex: number): void {
+    formData.forEach((formData, index) => {
+      if (
+        formData.roleOriginal !== formData.roleCurr &&
+        exceptIndex !== index
+      ) {
+        throw new Error(
+          `Cannot edit or delete individual users with multiple users' changes pending. Try 'Save all'.`,
+        );
+      }
+    });
+  }
+
+  // Edit + Delete buttons
+  type Operation = "edit" | "delete";
+
+  async function handleUserOperation(index: number, operation: Operation) {
+    try {
+      validateFormData(index);
+      const user = formData[index];
+      if (operation === "edit") {
+        await editUserRole(user.username, user.roleCurr);
+      } else if (operation === "delete") {
+        await deleteUser(user.username);
+      }
+
+      window.location.reload();
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "An unknown error occurred during the operation.",
+      );
+    }
+  }
+
+  const handleEdit = (index: number) => handleUserOperation(index, "edit");
+  const handleDelete = (index: number) => handleUserOperation(index, "delete");
+
+  // Save all button
+  const handleSaveAll = async () => {
+    const updatedUsers: User[] = formData.map((user) => ({
+      username: user.username,
+      org: user.org,
+      role: user.roleCurr,
+    }));
+    try {
+      await saveAllAssignments(updatedUsers);
+      window.location.reload();
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "An unknown error occurred during the operation.",
+      );
+    }
+  };
+
+  return (
+    <div>
+      <button onClick={handleSaveAll}>Save all</button>
+      {sortedOrgs.map((org) => (
+        <div key={org}>
+          <h3>{org}</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Role</th>
+                <th></th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {orgUsersMap.get(org)!.map((user) => (
+                <tr
+                  key={user.username}
+                  style={{
+                    backgroundColor:
+                      user.roleOriginal === user.roleCurr ? "" : "yellow",
+                  }}
+                >
+                  <td>
+                    <Link href={`/user/` + user.username}>{user.username}</Link>
+                  </td>
+                  <td>
+                    {user.edit ? (
+                      <select
+                        name="role"
+                        value={user.roleCurr}
+                        onChange={(e) => user.onInputChange(e)}
+                      >
+                        {roles.map((role) => (
+                          <option key={role.name} value={role.name}>
+                            {role.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p>{user.roleCurr}</p>
+                    )}
+                  </td>
+                  <td>
+                    <button onClick={user.onEdit} disabled={!user.edit}>
+                      Edit
+                    </button>
+                  </td>
+                  <td>
+                    <button onClick={user.onDelete} disabled={!user.delete}>
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  );
+};

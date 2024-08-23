@@ -1,0 +1,20 @@
+### PG
+FROM postgres:15-alpine
+
+RUN apk add --no-cache gettext
+
+# Copy the .env file, the template SQL file, and the script to the container
+COPY .env .
+COPY db_init_template.sql .
+COPY db_init_generate.sh .
+
+# Make the script executable
+RUN chmod +x db_init_generate.sh
+
+# Run the script to generate the output.sql file
+RUN /bin/sh ./db_init_generate.sh
+
+# RUN mkdir -p /docker-entrypoint-initdb.d
+
+# Optional: Copy the output.sql to the desired location
+RUN mv init.sql /docker-entrypoint-initdb.d/
