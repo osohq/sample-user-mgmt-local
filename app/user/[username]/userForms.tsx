@@ -12,6 +12,7 @@ import {
   editUserRole,
   deleteUser,
   saveAllAssignments,
+  Result,
 } from "./actions";
 
 function SubmitButton({ action }: { action: string }) {
@@ -35,90 +36,104 @@ export function CreateUserForm({ organizations, roles }: CreateUserFormProps) {
   );
   const [role, setRole] = useState<string>(roles[0].name);
   const [formState, formAction] = useFormState(createUser, null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (formState?.success) {
-      // Refresh the page if the form submission was successful
+    if (formState?.ok) {
+      // Refresh the page if the form submission was successful to re-fetch new
+      // data.
       window.location.reload();
+    } else if (!formState?.ok) {
+      setErrorMessage(formState?.error as string);
     }
-  }, [formState?.success]);
+  }, [formState?.ok]);
 
   return (
-    <form action={formAction}>
-      <div>
-        <label htmlFor="username">Username:</label>
-        <input
-          id="username"
-          type="text"
-          name="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-        />
-      </div>
-      <div>
-        <label htmlFor="organization">Organization:</label>
-        <select
-          id="organization"
-          name="organization"
-          value={organization}
-          onChange={(e) => setOrganization(e.target.value)}
-          required
-        >
-          {organizations.map((org) => (
-            <option key={org.name} value={org.name}>
-              {org.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div>
-        <label htmlFor="role">Role:</label>
-        <select
-          id="role"
-          name="role"
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-          required
-        >
-          {roles.map((role) => (
-            <option key={role.name} value={role.name}>
-              {role.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <SubmitButton action="Create user" />
-    </form>
+    <div>
+      {errorMessage && <div className="error" role="alert">{errorMessage}</div>}
+      <form action={formAction}>
+        <div>
+          <label htmlFor="username">Username:</label>
+          <input
+            id="username"
+            type="text"
+            name="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+        </div>
+        <div>
+          <label htmlFor="organization">Organization:</label>
+          <select
+            id="organization"
+            name="organization"
+            value={organization}
+            onChange={(e) => setOrganization(e.target.value)}
+            required
+          >
+            {organizations.map((org) => (
+              <option key={org.name} value={org.name}>
+                {org.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="role">Role:</label>
+          <select
+            id="role"
+            name="role"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            required
+          >
+            {roles.map((role) => (
+              <option key={role.name} value={role.name}>
+                {role.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <SubmitButton action="Create user" />
+      </form>
+    </div>
   );
 }
 
 export function CreateOrgForm() {
   const [orgName, setOrgName] = useState<string>("");
   const [formState, formAction] = useFormState(createOrg, null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (formState?.success) {
-      // Refresh the page if the form submission was successful
+    if (formState?.ok) {
+      // Refresh the page if the form submission was successful to re-fetch new
+      // data.
       window.location.reload();
+    } else if (!formState?.ok) {
+      setErrorMessage(formState?.error as string);
     }
-  }, [formState?.success]);
+  }, [formState?.ok]);
 
   return (
-    <form action={formAction}>
-      <div>
-        <label htmlFor="orgName">Name:</label>
-        <input
-          id="orgName"
-          type="text"
-          name="orgName"
-          value={orgName}
-          onChange={(e) => setOrgName(e.target.value)}
-          required
-        />
-      </div>
-      <SubmitButton action="Add org" />
-    </form>
+    <div>
+      {errorMessage && <div className="error" role="alert">{errorMessage}</div>}
+      <form action={formAction}>
+        <div>
+          <label htmlFor="orgName">Name:</label>
+          <input
+            id="orgName"
+            type="text"
+            name="orgName"
+            value={orgName}
+            onChange={(e) => setOrgName(e.target.value)}
+            required
+          />
+        </div>
+        <SubmitButton action="Add org" />
+      </form>
+    </div>
   );
 }
 
@@ -166,6 +181,8 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
     })),
   );
 
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   // Group users by org
   const orgUsersMap: Map<string, FormData[]> = new Map();
   formData.forEach((user) => {
@@ -210,19 +227,27 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
     try {
       ensureOnePendingChange(index);
       const user = formData[index];
+      let r: Result;
       if (operation === "edit") {
-        await editUserRole(user.username, user.roleCurr);
-      } else if (operation === "delete") {
-        await deleteUser(user.username);
+        r = await editUserRole(user.username, user.roleCurr);
+      } else {
+        r = await deleteUser(user.username);
       }
 
-      window.location.reload();
+      if (r.ok) {
+        // Refresh the page if the form submission was successful to re-fetch new
+        // data.
+        window.location.reload();
+      } else {
+        setErrorMessage(r.error);
+      }
+
     } catch (error) {
-      alert(
-        error instanceof Error
-          ? error.message
-          : "An unknown error occurred during the operation.",
-      );
+      if (error instanceof Error) {
+        setErrorMessage(error.message);
+      } else {
+        setErrorMessage("Unknown error");
+      }
     }
   }
 
@@ -237,19 +262,26 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
       role: user.roleCurr,
     }));
     try {
-      await saveAllAssignments(updatedUsers);
-      window.location.reload();
+      const r: Result = await saveAllAssignments(updatedUsers);
+      if (r.ok) {
+        // Refresh the page if the form submission was successful to re-fetch new
+        // data.
+        window.location.reload();
+      } else {
+        setErrorMessage(r.error);
+      }
     } catch (error) {
-      alert(
-        error instanceof Error
-          ? error.message
-          : "An unknown error occurred during the operation.",
-      );
+      if (error instanceof Error) {
+        setErrorMessage(error.message);
+      } else {
+        setErrorMessage("Unknown error");
+      }
     }
   };
 
   return (
     <div>
+      {errorMessage && <div className="error" role="alert">{errorMessage}</div>}
       <button onClick={handleSaveAll}>Save all</button>
       {sortedOrgs.map((org) => (
         <div key={org}>
