@@ -1,4 +1,4 @@
-@tailwind base;
+/* @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -29,5 +29,16 @@ body {
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+} */
+
+.permissions {
+  table,
+  th,
+  td,
+  tr {
+    border: 1px solid black;
+    border-collapse: collapse;
+    padding: 0.5rem;
   }
 }

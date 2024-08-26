@@ -80,7 +80,7 @@ const OrgCreator: React.FC<OrgCreatorProps> = ({ requestor }) => {
   return (
     <div>
       <UserCreator requestor={requestor} orgsIn={orgs} />
-      {createOrgsPerm && <h2>Create orgs</h2>}
+      {createOrgsPerm && <h3>Create orgs</h3>}
       {errorMessage && (
         <div className="error" role="alert">
           {errorMessage}

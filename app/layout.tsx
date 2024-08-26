@@ -1,5 +1,7 @@
 import type { FC, ReactNode } from "react";
 
+import "./globals.css";
+
 type LayoutProps = {
   children?: ReactNode;
 };

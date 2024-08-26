@@ -7,7 +7,7 @@ import { User } from "@/lib/relations";
 
 export default async function Home() {
   const users = await query<User>(
-    "SELECT username, org, role::TEXT FROM users ORDER BY username",
+    "SELECT username, org, role::TEXT FROM users ORDER BY username"
   );
 
   const orgUsersMap: Map<string, User[]> = new Map();
@@ -21,7 +21,7 @@ export default async function Home() {
 
   // Sort the org keys alphabetically
   const sortedOrgs = Array.from(orgUsersMap.keys()).sort((a, b) =>
-    a.toLowerCase().localeCompare(b.toLowerCase()),
+    a.toLowerCase().localeCompare(b.toLowerCase())
   );
 
   return (
@@ -29,7 +29,7 @@ export default async function Home() {
       <h1>Users</h1>
       {sortedOrgs.map((org) => (
         <div key={org}>
-          <h3>{org}</h3>
+          <h4>{org}</h4>
           <table>
             <thead>
               <tr>
