@@ -4,6 +4,7 @@ import { getUserWOrgPermissions, UserWOrgPermissions } from "@/actions/user";
 import { stringifyError } from "@/lib/result";
 
 import OrgCreator from "./features/organizations/OrgCreator";
+import DocumentsOverview from "./features/documents/DocumentsOverview";
 
 interface UserProps {
   params: { username: string };
@@ -81,13 +82,11 @@ export default async function UserPage({ params }: UserProps) {
                     <td>{user.createUser.toString()}</td>
                     <td>Create new users.</td>
                   </tr>
-                  {/* Include row for app permissions here
                   <tr>
                     <td>Create doc</td>
                     <td>{user.createDoc.toString()}</td>
-                    <td>Create new docs.</td>
+                    <td>Create new documents.</td>
                   </tr>
-                  */}
                 </tbody>
               </table>
             </div>
@@ -96,7 +95,7 @@ export default async function UserPage({ params }: UserProps) {
             </div>
           </div>
           <div id="app" style={{ flex: 1 }}>
-            {/* Overview of application goes here. */}
+            <DocumentsOverview user={user} />
           </div>
         </div>
       )}
