@@ -2,8 +2,8 @@ import React from "react";
 import { notFound } from "next/navigation";
 
 import { query } from "@/lib/db";
-import { User, Org, Role } from "@/lib/relations";
 import { oso } from "@/lib/oso";
+import { User, Org, Role } from "@/lib/relations";
 
 import {
   CreateUserForm,
@@ -31,10 +31,13 @@ export default async function UserPage({ params }: UserProps) {
     "name",
   );
 
+  // Inline the condition generated from `listLocal` into a query the get the
+  // organization's names.
   const assignableOrgs = `SELECT organizations.name FROM organizations WHERE ${assignableOrgCond}`;
   const orgs = await query<Org>(assignableOrgs);
 
-  // Determine which users are visible to this user.
+  // Determine the users for which this user has `read` permissions. This will
+  // form the base of which users this user might be able to manage.
   const readableUsersCond = await oso.listLocal(
     osoUser,
     "read",
@@ -42,7 +45,7 @@ export default async function UserPage({ params }: UserProps) {
     "username",
   );
 
-  // Determine which users this user may edit.
+  // Determine the users for which this user has `edit_role` permissions.
   const editableRoleUsersCond = await oso.listLocal(
     osoUser,
     "edit_role",
@@ -50,23 +53,20 @@ export default async function UserPage({ params }: UserProps) {
     "username",
   );
 
-  // Determine which users this user may delete.
+  // Determine the users for which this user has `delete` permissions.
   const deleteUsersCond = await oso.listLocal(
     osoUser,
-    "edit_role",
+    "delete",
     "User",
     "username",
   );
 
-  // Determine the database's values for organization_role.
-  const organizationRoles = await query<Role>(
-    `SELECT DISTINCT unnest(enum_range(NULL::organization_role)) AS name`,
-    [],
-  );
-
-  // Determine all visible users, along with whether or not this user has either
-  // edit or delete permissions. Users can only view all users visible to them
-  // if they can edit or delete them.
+  // Determine all visible users (`readableUsersCond`), along with whether or
+  // not this user has `edit_role` (`editableRoleUsersCond`) or `delete`
+  // permissions (`deleteUsersCond`).
+  //
+  // We inline the `edit_role` and `delete` permissions queries in this query to
+  // make fewer calls to the database.
   const usersWPermissions = await query<UsersWPermissions>(
     `SELECT
       username,
@@ -90,6 +90,12 @@ export default async function UserPage({ params }: UserProps) {
   }
 
   const user: User = usersWPermissions.splice(userIndex, 1)[0];
+
+  // Determine the database's values for `organization_role`.
+  const organizationRoles = await query<Role>(
+    `SELECT DISTINCT unnest(enum_range(NULL::organization_role)) AS name`,
+    [],
+  );
 
   return (
     <div>

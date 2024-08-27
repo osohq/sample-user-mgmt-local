@@ -1,3 +1,9 @@
+# Examples
+
+- `app/user/[username]/page.tsx` demonstrates using local authorization for list
+  filtering, i.e. returning subsets of data from your database based on the
+  policy retained in Oso.
+
 # User management "component"
 
 This application provides a user management system from which other sample apps
