@@ -46,7 +46,7 @@ export async function write(text: string, params?: any[]): Promise<void> {
   console.log("Next query is write");
   try {
     query(text, params);
-  } catch(err) {
+  } catch (err) {
     throw err;
   }
 }
