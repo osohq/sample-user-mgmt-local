@@ -6,14 +6,8 @@ import Link from "next/link";
 
 import { User, Org, Role } from "@/lib/relations";
 import { Result } from "@/lib/result";
-
-import {
-  createUser,
-  createOrg,
-  editUserRole,
-  deleteUser,
-  saveAllAssignments,
-} from "./actions";
+import { createUser, deleteUser, updateUsersByUsername } from "@/actions/user";
+import { createOrg } from "@/actions/org";
 
 function SubmitButton({ action }: { action: string }) {
   const { pending } = useFormStatus();
@@ -50,7 +44,11 @@ export function CreateUserForm({ organizations, roles }: CreateUserFormProps) {
 
   return (
     <div>
-      {errorMessage && <div className="error" role="alert">{errorMessage}</div>}
+      {errorMessage && (
+        <div className="error" role="alert">
+          {errorMessage}
+        </div>
+      )}
       <form action={formAction}>
         <div>
           <label htmlFor="username">Username:</label>
@@ -118,7 +116,11 @@ export function CreateOrgForm() {
 
   return (
     <div>
-      {errorMessage && <div className="error" role="alert">{errorMessage}</div>}
+      {errorMessage && (
+        <div className="error" role="alert">
+          {errorMessage}
+        </div>
+      )}
       <form action={formAction}>
         <div>
           <label htmlFor="orgName">Name:</label>
@@ -143,7 +145,7 @@ export interface UsersWPermissions {
   role: string;
   edit: boolean;
   delete: boolean;
-};
+}
 
 interface ManageUsersFormProps {
   users: UsersWPermissions[];
@@ -223,13 +225,18 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
   // Edit + Delete buttons
   type Operation = "edit" | "delete";
 
-  async function handleSingleUserOperation(index: number, operation: Operation) {
+  async function handleSingleUserOperation(
+    index: number,
+    operation: Operation,
+  ) {
     try {
       ensureOnePendingChange(index);
       const user = formData[index];
       let r: Result<null>;
       if (operation === "edit") {
-        r = await editUserRole(user.username, user.roleCurr);
+        r = await updateUsersByUsername([
+          { username: user.username, role: user.roleCurr, org: user.org },
+        ]);
       } else {
         r = await deleteUser(user.username);
       }
@@ -241,7 +248,6 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
       } else {
         setErrorMessage(r.error);
       }
-
     } catch (error) {
       if (error instanceof Error) {
         setErrorMessage(error.message);
@@ -251,8 +257,10 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
     }
   }
 
-  const handleEdit = (index: number) => handleSingleUserOperation(index, "edit");
-  const handleDelete = (index: number) => handleSingleUserOperation(index, "delete");
+  const handleEdit = (index: number) =>
+    handleSingleUserOperation(index, "edit");
+  const handleDelete = (index: number) =>
+    handleSingleUserOperation(index, "delete");
 
   // Save all button
   const handleSaveAll = async () => {
@@ -261,27 +269,23 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
       org: user.org,
       role: user.roleCurr,
     }));
-    try {
-      const r: Result<null> = await saveAllAssignments(updatedUsers);
-      if (r.success) {
-        // Refresh the page if the form submission was successful to re-fetch new
-        // data.
-        window.location.reload();
-      } else {
-        setErrorMessage(r.error);
-      }
-    } catch (error) {
-      if (error instanceof Error) {
-        setErrorMessage(error.message);
-      } else {
-        setErrorMessage("Unknown error");
-      }
+    const r = await updateUsersByUsername(updatedUsers);
+    if (r.success) {
+      // Refresh the page if the form submission was successful to re-fetch new
+      // data.
+      window.location.reload();
+    } else {
+      setErrorMessage(r.error);
     }
   };
 
   return (
     <div>
-      {errorMessage && <div className="error" role="alert">{errorMessage}</div>}
+      {errorMessage && (
+        <div className="error" role="alert">
+          {errorMessage}
+        </div>
+      )}
       <button onClick={handleSaveAll}>Save all</button>
       {sortedOrgs.map((org) => (
         <div key={org}>
