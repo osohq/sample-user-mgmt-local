@@ -4,6 +4,9 @@ import { pool } from "@/lib/db";
 import { Result, handleError } from "@/lib/result";
 
 // Create a new organization
+//
+// TODO: add authorization here once
+// https://github.com/osohq/oso-service/pull/3127
 export async function createOrg(
   _prevState: Result<null> | null,
   formData: FormData,

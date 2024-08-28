@@ -116,7 +116,11 @@ export default async function UserPage({ params }: UserProps) {
       {orgs.length > 0 && (
         <div>
           <h2>Create user</h2>
-          <CreateUserForm organizations={orgs} roles={organizationRoles} />
+          <CreateUserForm
+            organizations={orgs}
+            requestor={user.username}
+            roles={organizationRoles}
+          />
         </div>
       )}
       {/* Only display visible users on this page if any of them can be modified */}
@@ -126,6 +130,7 @@ export default async function UserPage({ params }: UserProps) {
           <ManageUsersForm
             users={usersWPermissions}
             roles={organizationRoles}
+            requestor={user.username}
           />
         </div>
       )}

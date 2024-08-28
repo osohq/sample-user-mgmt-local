@@ -6,7 +6,11 @@ import Link from "next/link";
 
 import { User, Org, Role } from "@/lib/relations";
 import { Result } from "@/lib/result";
-import { createUser, deleteUser, updateUsersByUsername } from "@/actions/user";
+import {
+  createUser,
+  deleteUser,
+  editUsersRoleByUsername,
+} from "@/actions/user";
 import { createOrg } from "@/actions/org";
 
 function SubmitButton({ action }: { action: string }) {
@@ -20,11 +24,19 @@ function SubmitButton({ action }: { action: string }) {
 
 interface CreateUserFormProps {
   organizations: Org[];
+  requestor: string;
   roles: Role[];
 }
 
-export function CreateUserForm({ organizations, roles }: CreateUserFormProps) {
-  const [formState, formAction] = useFormState(createUser, null);
+export function CreateUserForm({
+  organizations,
+  requestor,
+  roles,
+}: CreateUserFormProps) {
+  // We need to provide the username of the user creating the new user to ensure
+  // they're permitted to do so.
+  const createUserWithCreator = createUser.bind(null, { requestor });
+  const [formState, formAction] = useFormState(createUserWithCreator, null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -134,6 +146,7 @@ export interface UsersWPermissions {
 }
 
 interface ManageUsersFormProps {
+  requestor: string;
   users: UsersWPermissions[];
   roles: Role[];
 }
@@ -151,6 +164,7 @@ interface FormData {
 }
 
 export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
+  requestor,
   users,
   roles,
 }) => {
@@ -212,6 +226,7 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
   type Operation = "edit" | "delete";
 
   async function handleSingleUserOperation(
+    requestor: string,
     index: number,
     operation: Operation,
   ) {
@@ -220,11 +235,11 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
       const user = formData[index];
       let r: Result<null>;
       if (operation === "edit") {
-        r = await updateUsersByUsername([
+        r = await editUsersRoleByUsername(requestor, [
           { username: user.username, role: user.roleCurr, org: user.org },
         ]);
       } else {
-        r = await deleteUser(user.username);
+        r = await deleteUser(requestor, user.username);
       }
 
       if (r.success) {
@@ -244,9 +259,9 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
   }
 
   const handleEdit = (index: number) =>
-    handleSingleUserOperation(index, "edit");
+    handleSingleUserOperation(requestor, index, "edit");
   const handleDelete = (index: number) =>
-    handleSingleUserOperation(index, "delete");
+    handleSingleUserOperation(requestor, index, "delete");
 
   // Save all button
   const handleSaveAll = async () => {
@@ -255,7 +270,7 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
       org: user.org,
       role: user.roleCurr,
     }));
-    const r = await updateUsersByUsername(updatedUsers);
+    const r = await editUsersRoleByUsername(requestor, updatedUsers);
     if (r.success) {
       // Refresh the page if the form submission was successful to re-fetch new
       // data.
