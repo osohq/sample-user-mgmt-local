@@ -10,6 +10,7 @@ import {
   createUser,
   deleteUser,
   editUsersRoleByUsername,
+  UsersWPermissions,
 } from "@/actions/user";
 import { createOrg } from "@/actions/org";
 
@@ -135,14 +136,6 @@ export function CreateOrgForm() {
       </form>
     </div>
   );
-}
-
-export interface UsersWPermissions {
-  username: string;
-  org: string;
-  role: string;
-  edit: boolean;
-  delete: boolean;
 }
 
 interface ManageUsersFormProps {

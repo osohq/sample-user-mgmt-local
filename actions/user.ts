@@ -5,6 +5,86 @@ import { authorizeUser, oso } from "@/lib/oso";
 import { User } from "@/lib/relations";
 import { Result, handleError } from "@/lib/result";
 
+export interface UsersWPermissions {
+  username: string;
+  org: string;
+  role: string;
+  edit: boolean;
+  delete: boolean;
+}
+
+export async function getReadableUsersWithPermissions(
+  requestor: string,
+): Promise<Result<{ users: UsersWPermissions[]; thisUser: User }>> {
+  const osoUser = { type: "User", id: requestor };
+  const client = await pool.connect();
+  try {
+    // Determine the users for which this user has `read` permissions. This will
+    // form the base of which users this user might be able to manage.
+    const readableUsersCond = await oso.listLocal(
+      osoUser,
+      "read",
+      "User",
+      "username",
+    );
+
+    // Determine the users for which this user has `edit_role` permissions.
+    const editableRoleUsersCond = await oso.listLocal(
+      osoUser,
+      "edit_role",
+      "User",
+      "username",
+    );
+
+    // Determine the users for which this user has `delete` permissions.
+    const deleteUsersCond = await oso.listLocal(
+      osoUser,
+      "delete",
+      "User",
+      "username",
+    );
+
+    // Determine all visible users (`readableUsersCond`), along with whether or
+    // not this user has `edit_role` (`editableRoleUsersCond`) or `delete`
+    // permissions (`deleteUsersCond`).
+    //
+    // We inline the `edit_role` and `delete` permissions queries in this query to
+    // make fewer calls to the database.
+    const usersWPermissionsRes = await client.query<UsersWPermissions>(
+      `SELECT
+        username,
+        org,
+        role,
+        ${editableRoleUsersCond} as edit,
+        ${deleteUsersCond} as delete
+      FROM users
+      WHERE ${readableUsersCond}
+      ORDER BY username`,
+    );
+    const users = usersWPermissionsRes.rows;
+
+    // Extract this user from the set of all users because we don't want them to
+    // be able to edit themselves.
+    const userIndex = users.findIndex(
+      (user) => user.username === requestor,
+    );
+
+    if (userIndex === -1) {
+      return handleError(`user ${requestor} not found`);
+    }
+
+    const thisUser: User = users.splice(userIndex, 1)[0];
+    return {
+      success: true,
+      value: { users, thisUser },
+    };
+  } catch (err) {
+    return handleError(err);
+  } finally {
+    client.release();
+  }
+}
+
 // Create a new user
 export async function createUser(
   // Bound parameter because `createUser` is used as a form action.
