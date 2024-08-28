@@ -2,27 +2,13 @@
 
 import { pool } from "@/lib/db";
 import { User } from "@/lib/relations";
-
-export type Result = { ok: true } | { ok: false; error: string };
-
-// Function to handle errors
-function handleError(error: unknown): Result {
-  console.error("Database operation failed:", error);
-
-  if (typeof error === "string") {
-    return { ok: false, error };
-  } else if (error instanceof Error) {
-    return { ok: false, error: error.message };
-  } else {
-    return { ok: false, error: "Unknown error" };
-  }
-}
+import { Result, handleError } from "@/lib/result";
 
 // Create a new user
 export async function createUser(
-  _prevState: Result | null,
+  _prevState: Result<null> | null,
   formData: FormData,
-): Promise<Result> {
+): Promise<Result<null>> {
   const data = {
     username: formData.get("username"),
     org: formData.get("organization"),
@@ -35,7 +21,7 @@ export async function createUser(
       `INSERT INTO users (username, org, role) VALUES ($1, $2, $3::organization_role);`,
       [data.username, data.org, data.role],
     );
-    return { ok: true };
+    return { success: true, value: null };
   } catch (error) {
     return handleError(error);
   } finally {
@@ -45,9 +31,9 @@ export async function createUser(
 
 // Create a new organization
 export async function createOrg(
-  _prevState: Result | null,
+  _prevState: Result<null> | null,
   formData: FormData,
-): Promise<Result> {
+): Promise<Result<null>> {
   const data = {
     name: formData.get("orgName"),
   };
@@ -57,7 +43,7 @@ export async function createOrg(
     await client.query(`INSERT INTO organizations (name) VALUES ($1);`, [
       data.name,
     ]);
-    return { ok: true };
+    return { success: true, value: null };
   } catch (error) {
     return handleError(error);
   } finally {
@@ -69,14 +55,14 @@ export async function createOrg(
 export async function editUserRole(
   username: string,
   role: string,
-): Promise<Result> {
+): Promise<Result<null>> {
   const client = await pool.connect();
   try {
     await client.query(
       `UPDATE users SET role = $1::organization_role WHERE username = $2;`,
       [role, username],
     );
-    return { ok: true };
+    return { success: true, value: null };
   } catch (error) {
     return handleError(error);
   } finally {
@@ -85,11 +71,11 @@ export async function editUserRole(
 }
 
 // Delete a user by username
-export async function deleteUser(username: string): Promise<Result> {
+export async function deleteUser(username: string): Promise<Result<null>> {
   const client = await pool.connect();
   try {
     await client.query(`DELETE FROM users WHERE username = $1;`, [username]);
-    return { ok: true };
+    return { success: true, value: null };
   } catch (error) {
     return handleError(error);
   } finally {
@@ -98,7 +84,7 @@ export async function deleteUser(username: string): Promise<Result> {
 }
 
 // Save multiple user assignments in bulk
-export async function saveAllAssignments(updates: User[]): Promise<Result> {
+export async function saveAllAssignments(updates: User[]): Promise<Result<null>> {
   const client = await pool.connect();
 
   try {
@@ -118,7 +104,7 @@ export async function saveAllAssignments(updates: User[]): Promise<Result> {
     ]);
 
     await client.query(queryText, userFields);
-    return { ok: true };
+    return { success: true, value: null };
   } catch (error) {
     return handleError(error);
   } finally {

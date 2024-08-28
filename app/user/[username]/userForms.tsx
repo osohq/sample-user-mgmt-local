@@ -5,6 +5,7 @@ import { useFormStatus, useFormState } from "react-dom";
 import Link from "next/link";
 
 import { User, Org, Role } from "@/lib/relations";
+import { Result } from "@/lib/result";
 
 import {
   createUser,
@@ -12,7 +13,6 @@ import {
   editUserRole,
   deleteUser,
   saveAllAssignments,
-  Result,
 } from "./actions";
 
 function SubmitButton({ action }: { action: string }) {
@@ -39,14 +39,14 @@ export function CreateUserForm({ organizations, roles }: CreateUserFormProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (formState?.ok) {
+    if (formState?.success) {
       // Refresh the page if the form submission was successful to re-fetch new
       // data.
       window.location.reload();
-    } else if (!formState?.ok) {
+    } else if (!formState?.success) {
       setErrorMessage(formState?.error as string);
     }
-  }, [formState?.ok]);
+  }, [formState?.success]);
 
   return (
     <div>
@@ -107,14 +107,14 @@ export function CreateOrgForm() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (formState?.ok) {
+    if (formState?.success) {
       // Refresh the page if the form submission was successful to re-fetch new
       // data.
       window.location.reload();
-    } else if (!formState?.ok) {
+    } else if (!formState?.success) {
       setErrorMessage(formState?.error as string);
     }
-  }, [formState?.ok]);
+  }, [formState?.success]);
 
   return (
     <div>
@@ -227,14 +227,14 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
     try {
       ensureOnePendingChange(index);
       const user = formData[index];
-      let r: Result;
+      let r: Result<null>;
       if (operation === "edit") {
         r = await editUserRole(user.username, user.roleCurr);
       } else {
         r = await deleteUser(user.username);
       }
 
-      if (r.ok) {
+      if (r.success) {
         // Refresh the page if the form submission was successful to re-fetch new
         // data.
         window.location.reload();
@@ -262,8 +262,8 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
       role: user.roleCurr,
     }));
     try {
-      const r: Result = await saveAllAssignments(updatedUsers);
-      if (r.ok) {
+      const r: Result<null> = await saveAllAssignments(updatedUsers);
+      if (r.success) {
         // Refresh the page if the form submission was successful to re-fetch new
         // data.
         window.location.reload();
