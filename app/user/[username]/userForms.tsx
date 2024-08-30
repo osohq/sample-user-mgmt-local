@@ -24,11 +24,6 @@ interface CreateUserFormProps {
 }
 
 export function CreateUserForm({ organizations, roles }: CreateUserFormProps) {
-  const [username, setUsername] = useState<string>("");
-  const [organization, setOrganization] = useState<string>(
-    organizations[0].name,
-  );
-  const [role, setRole] = useState<string>(roles[0].name);
   const [formState, formAction] = useFormState(createUser, null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -56,8 +51,6 @@ export function CreateUserForm({ organizations, roles }: CreateUserFormProps) {
             id="username"
             type="text"
             name="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
             required
           />
         </div>
@@ -66,8 +59,6 @@ export function CreateUserForm({ organizations, roles }: CreateUserFormProps) {
           <select
             id="organization"
             name="organization"
-            value={organization}
-            onChange={(e) => setOrganization(e.target.value)}
             required
           >
             {organizations.map((org) => (
@@ -82,8 +73,6 @@ export function CreateUserForm({ organizations, roles }: CreateUserFormProps) {
           <select
             id="role"
             name="role"
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
             required
           >
             {roles.map((role) => (
@@ -100,7 +89,6 @@ export function CreateUserForm({ organizations, roles }: CreateUserFormProps) {
 }
 
 export function CreateOrgForm() {
-  const [orgName, setOrgName] = useState<string>("");
   const [formState, formAction] = useFormState(createOrg, null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -128,8 +116,6 @@ export function CreateOrgForm() {
             id="orgName"
             type="text"
             name="orgName"
-            value={orgName}
-            onChange={(e) => setOrgName(e.target.value)}
             required
           />
         </div>
