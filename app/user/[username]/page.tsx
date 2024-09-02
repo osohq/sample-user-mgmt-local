@@ -4,10 +4,7 @@ import { query } from "@/lib/db";
 import { User, Org, Role } from "@/lib/relations";
 
 import { getCreateUserOrgs } from "@/actions/org";
-import {
-  getReadableUsersWithPermissions,
-  UsersWPermissions,
-} from "@/actions/user";
+import { getReadableUsersWithPermissions } from "@/actions/user";
 
 import { CreateUserForm, CreateOrgForm, ManageUsersForm } from "./userForms";
 
@@ -18,7 +15,6 @@ interface UserProps {
 // Render the user's view of the application.
 export default async function UserPage({ params }: UserProps) {
   let errorMessage: string | null = null;
-  let usersWPermissions: UsersWPermissions[] | null = null;
   let user: User | null = null;
   let orgs: Org[] | null = null;
 
@@ -26,7 +22,6 @@ export default async function UserPage({ params }: UserProps) {
 
   const readableUsersRes = await getReadableUsersWithPermissions(username);
   if (readableUsersRes.success) {
-    usersWPermissions = readableUsersRes.value.users;
     user = readableUsersRes.value.thisUser;
   } else {
     errorMessage = readableUsersRes.error;
@@ -53,7 +48,7 @@ export default async function UserPage({ params }: UserProps) {
         </div>
       )}
 
-      {!errorMessage && user && usersWPermissions && (
+      {!errorMessage && user && (
         <div>
           <h1>{user?.username} Details</h1>
           <table>
@@ -79,17 +74,10 @@ export default async function UserPage({ params }: UserProps) {
               />
             </div>
           )}
-          {/* Only display visible users on this page if any of them can be modified */}
-          {usersWPermissions.some((user) => user.edit || user.delete) && (
-            <div>
-              <h2>Manage users</h2>
-              <ManageUsersForm
-                users={usersWPermissions}
-                roles={organizationRoles}
-                requestor={user.username}
-              />
-            </div>
-          )}
+          <ManageUsersForm
+            roles={organizationRoles}
+            requestor={user.username}
+          />
           {/* Global role hack for bootstrapped org to create new organizations */}
           {user.role === "admin" && user.org == "_" && (
             <div>

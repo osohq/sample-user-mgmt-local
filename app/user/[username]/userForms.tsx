@@ -1,16 +1,16 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useFormStatus, useFormState } from "react-dom";
 import Link from "next/link";
 
 import { User, Org, Role } from "@/lib/relations";
-import { Result } from "@/lib/result";
 import {
   createUser,
   deleteUser,
   editUsersRoleByUsername,
   UsersWPermissions,
+  getReadableUsersWithPermissions,
 } from "@/actions/user";
 import { createOrg } from "@/actions/org";
 
@@ -60,20 +60,11 @@ export function CreateUserForm({
       <form action={formAction}>
         <div>
           <label htmlFor="username">Username:</label>
-          <input
-            id="username"
-            type="text"
-            name="username"
-            required
-          />
+          <input id="username" type="text" name="username" required />
         </div>
         <div>
           <label htmlFor="organization">Organization:</label>
-          <select
-            id="organization"
-            name="organization"
-            required
-          >
+          <select id="organization" name="organization" required>
             {organizations.map((org) => (
               <option key={org.name} value={org.name}>
                 {org.name}
@@ -83,11 +74,7 @@ export function CreateUserForm({
         </div>
         <div>
           <label htmlFor="role">Role:</label>
-          <select
-            id="role"
-            name="role"
-            required
-          >
+          <select id="role" name="role" required>
             {roles.map((role) => (
               <option key={role.name} value={role.name}>
                 {role.name}
@@ -125,12 +112,7 @@ export function CreateOrgForm() {
       <form action={formAction}>
         <div>
           <label htmlFor="orgName">Name:</label>
-          <input
-            id="orgName"
-            type="text"
-            name="orgName"
-            required
-          />
+          <input id="orgName" type="text" name="orgName" required />
         </div>
         <SubmitButton action="Add org" />
       </form>
@@ -140,17 +122,12 @@ export function CreateOrgForm() {
 
 interface ManageUsersFormProps {
   requestor: string;
-  users: UsersWPermissions[];
   roles: Role[];
 }
 
-interface FormData {
-  username: string;
-  org: string;
-  roleOriginal: string;
+interface UsersWActions {
+  inner: UsersWPermissions;
   roleCurr: string;
-  edit: boolean;
-  delete: boolean;
   onRoleChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -158,58 +135,89 @@ interface FormData {
 
 export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
   requestor,
-  users,
   roles,
 }) => {
-  // Manage data for all forms as a single array.
-  const [formData, setFormData] = useState<FormData[]>(
-    users.map((user, index) => ({
-      username: user.username,
-      org: user.org,
-      roleOriginal: user.role,
-      roleCurr: user.role,
-      edit: user.edit,
-      delete: user.delete,
-      onRoleChange: (e) => handleRoleChange(e, index),
-      onEdit: () => handleEdit(index),
-      onDelete: () => handleDelete(index),
-    })),
-  );
-
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Group users by org
-  const orgUsersMap: Map<string, FormData[]> = new Map();
-  formData.forEach((user) => {
-    if (!orgUsersMap.has(user.org)) {
-      orgUsersMap.set(user.org, []);
-    }
-    orgUsersMap.get(user.org)!.push(user);
-  });
+  // Convert `UsersWPermissions[]` to `FormData[]`, filtering out any users that
+  // the requestor has neither edit nor delete permissions on.
+  function usersActionsFromPermissions(
+    users: UsersWPermissions[],
+  ): UsersWActions[] {
+    return (
+      users
+        // Filter out users without edit or delete permissions
+        .filter((user) => user.editRole || user.deleteUser)
+        .map((user, index) => ({
+          inner: user,
+          roleCurr: user.role,
+          onRoleChange: (e: React.ChangeEvent<HTMLSelectElement>) =>
+            user.editRole ? handleRoleChange(e, index) : {},
+          onEdit: user.editRole ? () => handleEdit(index) : () => {},
+          onDelete: user.deleteUser ? () => handleDelete(index) : () => {},
+        }))
+    );
+  }
 
-  // Sort the org keys alphabetically
-  const sortedOrgs = Array.from(orgUsersMap.keys()).sort((a, b) =>
-    a.toLowerCase().localeCompare(b.toLowerCase()),
+  const [users, setUsers] = useState<UsersWActions[]>([]);
+  const [orgUsersMap, setOrgUsersMap] = useState<Map<string, number[]>>(
+    new Map(),
   );
+
+  // Use a ref to formData so that closures built over it operate over a
+  // reference.
+  const usersRef = useRef(users);
+
+  // Whenever users change, update all dependent state.
+  useEffect(() => {
+    // Keep the ref updated with the latest state
+    usersRef.current = users;
+
+    // Ensure the map of orgs to users is consistent.
+    const map: Map<string, number[]> = new Map();
+    users.map((user, index) => {
+      if (!map.has(user.inner.org)) {
+        map.set(user.inner.org, []);
+      }
+      map.get(user.inner.org)!.push(index);
+    });
+    setOrgUsersMap(map);
+
+    // Reset error message.
+    setErrorMessage(null);
+  }, [users]);
+
+  // Convenience function to update the form data by reaching out to the
+  // database + applying Oso list filtering.
+  async function updateUsers(requestor: string) {
+    const usersRes = await getReadableUsersWithPermissions(requestor);
+    if (usersRes.success) {
+      setUsers(usersActionsFromPermissions(usersRes.value.users));
+    } else {
+      setErrorMessage(usersRes.error);
+    }
+  }
+
+  // On load, generate the table of users.
+  useEffect(() => {
+    updateUsers(requestor);
+  }, []);
 
   const handleRoleChange = (
     e: React.ChangeEvent<HTMLSelectElement>,
     index: number,
   ) => {
-    const newFormData = [...formData];
+    const newFormData = [...usersRef.current];
     newFormData[index].roleCurr = e.target.value;
-    setFormData(newFormData);
+    setUsers(newFormData);
   };
 
   // Ensure that there is only one pending change when modifying a single user.
   function ensureOnePendingChange(exceptIndex: number): void {
-    formData.forEach((formData, index) => {
-      if (
-        formData.roleOriginal !== formData.roleCurr &&
-        exceptIndex !== index
-      ) {
+    usersRef.current.forEach((user, index) => {
+      if (user.inner.role !== user.roleCurr && exceptIndex !== index) {
         throw new Error(
-          `Cannot edit or delete individual users with multiple users' changes pending. Try 'Save all'.`,
+          `Cannot edit or delete individual users with multiple users' changes pending. Try 'Save changed roles'.`,
         );
       }
     });
@@ -225,29 +233,27 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
   ) {
     try {
       ensureOnePendingChange(index);
-      const user = formData[index];
-      let r: Result<null>;
-      if (operation === "edit") {
-        r = await editUsersRoleByUsername(requestor, [
-          { username: user.username, role: user.roleCurr, org: user.org },
-        ]);
-      } else {
-        r = await deleteUser(requestor, user.username);
-      }
-
-      if (r.success) {
-        // Refresh the page if the form submission was successful to re-fetch new
-        // data.
-        window.location.reload();
-      } else {
-        setErrorMessage(r.error);
-      }
     } catch (error) {
-      if (error instanceof Error) {
-        setErrorMessage(error.message);
-      } else {
-        setErrorMessage("Unknown error");
-      }
+      setErrorMessage(error instanceof Error ? error.message : "Unknown error");
+      return;
+    }
+
+    const user = usersRef.current[index];
+    const result =
+      operation === "edit"
+        ? await editUsersRoleByUsername(requestor, [
+            {
+              username: user.inner.username,
+              role: user.roleCurr,
+              org: user.inner.org,
+            },
+          ])
+        : await deleteUser(requestor, user.inner.username);
+
+    if (result.success) {
+      await updateUsers(requestor);
+    } else {
+      setErrorMessage(result.error);
     }
   }
 
@@ -256,18 +262,20 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
   const handleDelete = (index: number) =>
     handleSingleUserOperation(requestor, index, "delete");
 
-  // Save all button
-  const handleSaveAll = async () => {
-    const updatedUsers: User[] = formData.map((user) => ({
-      username: user.username,
-      org: user.org,
-      role: user.roleCurr,
-    }));
+  // Save changed roles button
+  const handleSaveUpdatedRoles = async () => {
+    const updatedUsers: User[] = usersRef.current
+      // Only update roles that have changed.
+      .filter((user) => user.roleCurr !== user.inner.role)
+      .map((user) => ({
+        username: user.inner.username,
+        org: user.inner.org,
+        role: user.roleCurr,
+      }));
+
     const r = await editUsersRoleByUsername(requestor, updatedUsers);
     if (r.success) {
-      // Refresh the page if the form submission was successful to re-fetch new
-      // data.
-      window.location.reload();
+      await updateUsers(requestor);
     } else {
       setErrorMessage(r.error);
     }
@@ -275,71 +283,92 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
 
   return (
     <div>
-      {errorMessage && (
-        <div className="error" role="alert">
-          {errorMessage}
+      {/* Only display table if there are orgs */}
+      {Boolean(orgUsersMap.size) && (
+        <div>
+          <h2>Manage users</h2>
+          {errorMessage && (
+            <div className="error" role="alert">
+              {errorMessage}
+            </div>
+          )}
+          <button onClick={handleSaveUpdatedRoles}>Save changed roles</button>
+          {Array.from(orgUsersMap.keys())
+            .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+            .map((org) => (
+              <div key={org}>
+                <h3>{org}</h3>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Role</th>
+                      <th></th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orgUsersMap.get(org)!.map((userIndex) => {
+                      const user = usersRef.current[userIndex];
+
+                      return (
+                        <tr
+                          key={user.inner.username}
+                          // Highlight all changed values in yellow to indicate to user
+                          // their pending changes.
+                          style={{
+                            backgroundColor:
+                              user.inner.role === user.roleCurr ? "" : "yellow",
+                          }}
+                        >
+                          <td>
+                            <Link href={`/user/` + user.inner.username}>
+                              {user.inner.username}
+                            </Link>
+                          </td>
+                          <td>
+                            {/* Allow selecting a role iff requestor has editRole */}
+                            {user.inner.editRole ? (
+                              <select
+                                name="role"
+                                value={user.roleCurr}
+                                onChange={(e) => user.onRoleChange(e)}
+                              >
+                                {roles.map((role) => (
+                                  <option key={role.name} value={role.name}>
+                                    {role.name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <p>{user.roleCurr}</p>
+                            )}
+                          </td>
+                          <td>
+                            <button
+                              onClick={user.onEdit}
+                              disabled={!user.inner.editRole}
+                            >
+                              Edit
+                            </button>
+                          </td>
+                          <td>
+                            <button
+                              onClick={user.onDelete}
+                              disabled={!user.inner.deleteUser}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ))}
         </div>
       )}
-      <button onClick={handleSaveAll}>Save all</button>
-      {sortedOrgs.map((org) => (
-        <div key={org}>
-          <h3>{org}</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Role</th>
-                <th></th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {orgUsersMap.get(org)!.map((user) => (
-                <tr
-                  key={user.username}
-                  // Highlight all changed values in yellow to indicate to user
-                  // their pending changes.
-                  style={{
-                    backgroundColor:
-                      user.roleOriginal === user.roleCurr ? "" : "yellow",
-                  }}
-                >
-                  <td>
-                    <Link href={`/user/` + user.username}>{user.username}</Link>
-                  </td>
-                  <td>
-                    {user.edit ? (
-                      <select
-                        name="role"
-                        value={user.roleCurr}
-                        onChange={(e) => user.onRoleChange(e)}
-                      >
-                        {roles.map((role) => (
-                          <option key={role.name} value={role.name}>
-                            {role.name}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <p>{user.roleCurr}</p>
-                    )}
-                  </td>
-                  <td>
-                    <button onClick={user.onEdit} disabled={!user.edit}>
-                      Edit
-                    </button>
-                  </td>
-                  <td>
-                    <button onClick={user.onDelete} disabled={!user.delete}>
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
     </div>
   );
 };

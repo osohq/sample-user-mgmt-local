@@ -9,8 +9,8 @@ export interface UsersWPermissions {
   username: string;
   org: string;
   role: string;
-  edit: boolean;
-  delete: boolean;
+  editRole: boolean;
+  deleteUser: boolean;
 }
 
 export async function getReadableUsersWithPermissions(
@@ -55,8 +55,8 @@ export async function getReadableUsersWithPermissions(
         username,
         org,
         role,
-        ${editableRoleUsersCond} as edit,
-        ${deleteUsersCond} as delete
+        ${editableRoleUsersCond} as "editRole",
+        ${deleteUsersCond} as "deleteUser"
       FROM users
       WHERE ${readableUsersCond}
       ORDER BY username`,
@@ -65,9 +65,7 @@ export async function getReadableUsersWithPermissions(
 
     // Extract this user from the set of all users because we don't want them to
     // be able to edit themselves.
-    const userIndex = users.findIndex(
-      (user) => user.username === requestor,
-    );
+    const userIndex = users.findIndex((user) => user.username === requestor);
 
     if (userIndex === -1) {
       return handleError(`user ${requestor} not found`);
