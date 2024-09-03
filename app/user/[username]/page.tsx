@@ -1,11 +1,10 @@
 import React from "react";
 
-import { query } from "@/lib/db";
-import { User, Role } from "@/lib/relations";
+import { User } from "@/lib/relations";
 
 import { getReadableUsersWithPermissions } from "@/actions/user";
 
-import { CreateUserForm, CreateOrgForm, ManageUsersForm } from "./userForms";
+import { CreateOrgForm } from "./userForms";
 
 interface UserProps {
   params: { username: string };
@@ -24,12 +23,6 @@ export default async function UserPage({ params }: UserProps) {
   } else {
     errorMessage = readableUsersRes.error;
   }
-
-  // Determine the database's values for `organization_role`.
-  const organizationRoles = await query<Role>(
-    `SELECT DISTINCT unnest(enum_range(NULL::organization_role)) AS name`,
-    [],
-  );
 
   return (
     <div>
@@ -54,14 +47,9 @@ export default async function UserPage({ params }: UserProps) {
               </tr>
             </tbody>
           </table>
-          <CreateUserForm requestor={user.username} roles={organizationRoles} />
-          {/* Global role hack for bootstrapped org to create new organizations */}
-          {user.role === "admin" && user.org == "_" && (
-            <div>
-              <h2>Add organization</h2>
-              <CreateOrgForm />
-            </div>
-          )}
+          <div>
+            <CreateOrgForm requestor={user.username} />
+          </div>
         </div>
       )}
     </div>

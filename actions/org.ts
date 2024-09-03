@@ -1,8 +1,8 @@
 "use server";
 
-import { pool } from "@/lib/db";
-import { oso } from "@/lib/oso";
-import { Org } from "@/lib/relations";
+import { pool, query } from "@/lib/db";
+import { authorizeUser, oso } from "@/lib/oso";
+import { Org, Role } from "@/lib/relations";
 import { Result, handleError } from "@/lib/result";
 
 // Determine which organizations this user can create users on.
@@ -35,20 +35,45 @@ export async function getCreateUserOrgs(
   }
 }
 
+export async function canCreateOrg(
+  requestor: string,
+): Promise<Result<boolean>> {
+  const client = await pool.connect();
+  try {
+    const auth = await authorizeUser(client, requestor, "create", {
+      type: "Organization",
+      id: "",
+    });
+
+    return { success: true, value: auth };
+  } catch (error) {
+    return handleError(error);
+  } finally {
+    client.release();
+  }
+}
+
 // Create a new organization
-//
-// TODO: add authorization here once
-// https://github.com/osohq/oso-service/pull/3127
 export async function createOrg(
+  // Bound parameter because `createUser` is used as a form action.
+  p: { requestor: string },
   _prevState: Result<null> | null,
   formData: FormData,
 ): Promise<Result<null>> {
   const data = {
-    name: formData.get("orgName"),
+    name: formData.get("orgName") as string,
   };
 
   const client = await pool.connect();
   try {
+    const auth = await authorizeUser(client, p.requestor, "create", {
+      type: "Organization",
+      id: data.name,
+    });
+    if (!auth) {
+      return handleError(`not permitted to create Organization ${data.name}`);
+    }
+
     await client.query(`INSERT INTO organizations (name) VALUES ($1);`, [
       data.name,
     ]);
@@ -57,5 +82,17 @@ export async function createOrg(
     return handleError(error);
   } finally {
     client.release();
+  }
+}
+
+export async function getOrgRoles(): Promise<Result<Role[]>> {
+  try {
+    const value = await query<Role>(
+      `SELECT DISTINCT unnest(enum_range(NULL::organization_role)) AS name`,
+      [],
+    );
+    return { success: true, value };
+  } catch (error) {
+    return handleError(error);
   }
 }

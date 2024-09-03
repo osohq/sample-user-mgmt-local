@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useFormStatus, useFormState } from "react-dom";
 import Link from "next/link";
 
@@ -12,7 +12,12 @@ import {
   UsersWPermissions,
   getReadableUsersWithPermissions,
 } from "@/actions/user";
-import { createOrg, getCreateUserOrgs } from "@/actions/org";
+import {
+  canCreateOrg,
+  createOrg,
+  getCreateUserOrgs,
+  getOrgRoles,
+} from "@/actions/org";
 
 function SubmitButton({ action }: { action: string }) {
   const { pending } = useFormStatus();
@@ -25,11 +30,13 @@ function SubmitButton({ action }: { action: string }) {
 
 interface CreateUserFormProps {
   requestor: string;
-  roles: Role[];
+  orgsIn: Org[];
 }
 
-export function CreateUserForm({ requestor, roles }: CreateUserFormProps) {
+export function CreateUserForm({ requestor, orgsIn }: CreateUserFormProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [roles, setRoles] = useState<Role[]>([]);
 
   // We need to provide the username of the user creating the new user to ensure
   // they're permitted to do so.
@@ -39,7 +46,12 @@ export function CreateUserForm({ requestor, roles }: CreateUserFormProps) {
   const [formKey, setFormKey] = useState<number>(0);
 
   // Organizations that user can create new users on.
-  const [orgs, setOrgs] = useState<Org[]>([]);
+  const [orgs, setOrgs] = useState<Org[]>(orgsIn);
+  // Synchronize orgs with orgsIn.
+  useEffect(() => {
+    setOrgs(orgsIn);
+  }, [orgsIn]);
+
   // Users to propagate down to the manage users component.
   const [users, setUsers] = useState<UsersWPermissions[]>([]);
 
@@ -58,11 +70,20 @@ export function CreateUserForm({ requestor, roles }: CreateUserFormProps) {
   useEffect(() => {
     const initializeCreateUserFormState = async () => {
       const orgsResult = await getCreateUserOrgs(requestor);
-      if (orgsResult.success) {
+      // Determine the database's values for `organization_role`.
+      const orgRoles = await getOrgRoles();
+
+      if (orgsResult.success && orgRoles.success) {
         setOrgs(orgsResult.value);
+        setRoles(orgRoles.value);
         updateUsers(requestor);
+        setErrorMessage(null);
       } else if (errorMessage === null) {
-        setErrorMessage(orgsResult.error);
+        if (!orgsResult.success) {
+          setErrorMessage(orgsResult.error);
+        } else if (!orgRoles.success) {
+          setErrorMessage(orgRoles.error);
+        }
       }
     };
     initializeCreateUserFormState();
@@ -84,13 +105,13 @@ export function CreateUserForm({ requestor, roles }: CreateUserFormProps) {
 
   return (
     <div>
-      {Boolean(orgs.length) && <h2>Create Users</h2>}
+      {Boolean(orgs?.length) && <h2>Create Users</h2>}
       {errorMessage && (
         <div className="error" role="alert">
           {errorMessage}
         </div>
       )}
-      {Boolean(orgs.length) && (
+      {Boolean(orgs?.length) && (
         <form action={formAction} key={formKey}>
           <div>
             <label htmlFor="username">Username:</label>
@@ -124,37 +145,79 @@ export function CreateUserForm({ requestor, roles }: CreateUserFormProps) {
   );
 }
 
-export function CreateOrgForm() {
-  const [formState, formAction] = useFormState(createOrg, null);
+interface CreateOrgFormProps {
+  requestor: string;
+}
+
+export const CreateOrgForm: React.FC<CreateOrgFormProps> = ({ requestor }) => {
+  // We need to provide the username of the user creating the new user to ensure
+  // they're permitted to do so.
+  const createOrgWithCreator = createOrg.bind(null, { requestor });
+  const [orgs, setOrgs] = useState<Org[]>([]);
+  const [createOrgsPerm, setCreateOrgsPerm] = useState<boolean>(false);
+
+  const [formState, formAction] = useFormState(createOrgWithCreator, null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Convenience function to update the form data by reaching out to the
+  // database + applying Oso list filtering.
+  async function updateOrgs(requestor: string) {
+    const orgsRes = await getCreateUserOrgs(requestor);
+    if (orgsRes.success) {
+      setOrgs(orgsRes.value);
+    } else {
+      setErrorMessage(orgsRes.error);
+    }
+  }
+
+  // Get orgs + users on initial load
+  useEffect(() => {
+    const initializeCreateUserFormState = async () => {
+      const canCreateOrgs = await canCreateOrg(requestor);
+      if (canCreateOrgs.success) {
+        setCreateOrgsPerm(canCreateOrgs.value);
+      } else {
+        setErrorMessage(canCreateOrgs.error);
+      }
+    };
+    initializeCreateUserFormState();
+  }, []);
+
+  // Once we figure out the `createOrgsPerm`, update the organizations available
+  // with it.
+  useEffect(() => {
+    updateOrgs(requestor);
+  }, [createOrgsPerm]);
 
   useEffect(() => {
     if (formState?.success) {
-      // Refresh the page if the form submission was successful to re-fetch new
-      // data.
-      window.location.reload();
+      updateOrgs(requestor);
     } else if (!formState?.success) {
       setErrorMessage(formState?.error as string);
     }
-  }, [formState?.success]);
+  }, [formState]);
 
   return (
     <div>
+      <CreateUserForm requestor={requestor} orgsIn={orgs} />
+      {createOrgsPerm && <h2>Create orgs</h2>}
       {errorMessage && (
         <div className="error" role="alert">
           {errorMessage}
         </div>
       )}
-      <form action={formAction}>
-        <div>
-          <label htmlFor="orgName">Name:</label>
-          <input id="orgName" type="text" name="orgName" required />
-        </div>
-        <SubmitButton action="Add org" />
-      </form>
+      {createOrgsPerm && (
+        <form action={formAction}>
+          <div>
+            <label htmlFor="orgName">Name:</label>
+            <input id="orgName" type="text" name="orgName" required />
+          </div>
+          <SubmitButton action="Add org" />
+        </form>
+      )}
     </div>
   );
-}
+};
 
 interface ManageUsersFormProps {
   requestor: string;

@@ -17,7 +17,7 @@ export async function authorizeUser(
   username: string,
   permission: string,
   resource: IntoValue<Value>,
-): Promise<Boolean> {
+): Promise<boolean> {
   const osoUser = { type: "User", id: username };
 
   try {
@@ -28,7 +28,7 @@ export async function authorizeUser(
     );
     // Authorize `create_user` permission on user.
     const r = await client.query<Boolean>(createUserQuery);
-    const allowed = r.rows[0];
+    const allowed = r.rows[0].valueOf();
     return allowed;
   } catch (err) {
     throw err;
