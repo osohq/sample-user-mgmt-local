@@ -12,6 +12,10 @@ export const oso = new Oso("https://cloud.osohq.com", key, {
   dataBindings: "/app/oso-local-auth.yaml",
 });
 
+/**
+ * Convenience function for checking authorization requests against the local
+ * database.
+ */
 export async function authorizeUser(
   client: PoolClient,
   username: string,

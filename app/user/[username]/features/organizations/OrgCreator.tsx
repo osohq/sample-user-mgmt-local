@@ -13,12 +13,14 @@ interface OrgCreatorProps {
   requestor: string;
 }
 
-// Provides a component to create new organizations, and users, as well as
-// manage permitted users.
-//
-// When rendering components, this is the root.
-//
-// This component creates organizations, which it passes to `UserCreator`.
+/**
+ * Provides a component to create new organizations, and users, as well as
+ * manage permitted users.
+ *
+ * When rendering components, this is the root.
+ *
+ * This component creates organizations, which it passes to `UserCreator`.
+ */
 const OrgCreator: React.FC<OrgCreatorProps> = ({ requestor }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 

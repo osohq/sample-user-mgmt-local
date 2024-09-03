@@ -7,7 +7,7 @@ import { SubmitButton } from "@/lib/components";
 import { Org, Role } from "@/lib/relations";
 import {
   createUser,
-  UsersWPermissions,
+  ReadableUser,
   getReadableUsersWithPermissions,
 } from "@/actions/user";
 import { getCreateUserOrgs, getOrgRoles } from "@/actions/org";
@@ -19,10 +19,12 @@ interface UserCreatorProps {
   orgsIn: Org[];
 }
 
-// Provides a component to create users, as well as manage permitted users.
-//
-// This component receives organizations from `OrgCreator` (`orgsIn`), and
-// creates users, it passes to `UserManager`.
+/**
+ * Provides a component to create users, as well as manage permitted users.
+ *
+ * This component receives organizations from `OrgCreator` (`orgsIn`), and
+ * creates users, it passes to `UserManager`.
+ */
 const UserCreator: React.FC<UserCreatorProps> = ({ requestor, orgsIn }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -44,7 +46,7 @@ const UserCreator: React.FC<UserCreatorProps> = ({ requestor, orgsIn }) => {
   }, [orgsIn]);
 
   // Users to propagate down to the manage users component.
-  const [users, setUsers] = useState<UsersWPermissions[]>([]);
+  const [users, setUsers] = useState<ReadableUser[]>([]);
 
   // Convenience function to update the form data by reaching out to the
   // database + applying Oso list filtering.

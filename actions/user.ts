@@ -5,7 +5,11 @@ import { authorizeUser, oso } from "@/lib/oso";
 import { User } from "@/lib/relations";
 import { Result, handleError } from "@/lib/result";
 
-export interface UsersWPermissions {
+/**
+ * Identifies a `User` the requestor is permitted to read, as well fields
+ * describing other permissions.
+ */
+export interface ReadableUser {
   username: string;
   org: string;
   role: string;
@@ -13,9 +17,21 @@ export interface UsersWPermissions {
   deleteUser: boolean;
 }
 
+/**
+ * Returns readable users with additional permissions set.
+ *
+ * The results are separated into `thisUser`, which identifies the requestor's
+ * user, and `users`, which are all other users the requestor has `read` access
+ * on.
+ *
+ * ## Oso documentation
+ * This function demonstrates an advanced for of "authorized list" where, in a
+ * single query, we provide a set of users with one permission, and then include
+ * details about other permissions in the results of the query.
+ */
 export async function getReadableUsersWithPermissions(
   requestor: string,
-): Promise<Result<{ users: UsersWPermissions[]; thisUser: User }>> {
+): Promise<Result<{ users: ReadableUser[]; thisUser: User }>> {
   const osoUser = { type: "User", id: requestor };
   const client = await pool.connect();
   try {
@@ -50,7 +66,7 @@ export async function getReadableUsersWithPermissions(
     //
     // We inline the `edit_role` and `delete` permissions queries in this query to
     // make fewer calls to the database.
-    const usersWPermissionsRes = await client.query<UsersWPermissions>(
+    const usersWPermissionsRes = await client.query<ReadableUser>(
       `SELECT
         username,
         org,
@@ -83,15 +99,22 @@ export async function getReadableUsersWithPermissions(
   }
 }
 
-// Create a new user
+/**
+ * Creates a new user on an organization with a specified role.
+ *
+ * Requires that the user has the `create_user` permission on the organization.
+ *
+ * ## Oso documentation
+ * This function demonstrates a standard write path––determining the user has
+ * permission to write the data, and permitting the write to occur only if they
+ * do.
+ */
 export async function createUser(
   // Bound parameter because `createUser` is used as a form action.
   p: { requestor: string },
-  // State is total number of submissions; we track this so that repeated
-  // successful resubmissions trigger a state change.
-  prevState: Result<number> | null,
+  _prevState: Result<null> | null,
   formData: FormData,
-): Promise<Result<number>> {
+): Promise<Result<null>> {
   const data = {
     username: formData.get("username") as string,
     org: formData.get("organization") as string,
@@ -114,11 +137,7 @@ export async function createUser(
       `INSERT INTO users (username, org, role) VALUES ($1, $2, $3::organization_role);`,
       [data.username, data.org, data.role],
     );
-    const value =
-      prevState === null || prevState.success === false
-        ? 0
-        : prevState.value + 1;
-    return { success: true, value };
+    return { success: true, value: null };
   } catch (error) {
     return handleError(error);
   } finally {
@@ -126,7 +145,16 @@ export async function createUser(
   }
 }
 
-// Delete a user by username
+/**
+ * Deletes the specified user.
+ *
+ * Requires that the user has the `delete` permission on the specified user.
+ *
+ * ## Oso documentation
+ * This function demonstrates a standard write path––determining the user has
+ * permission to write the data, and permitting the write to occur only if they
+ * do.
+ */
 export async function deleteUser(
   requestor: string,
   username: string,
@@ -150,7 +178,16 @@ export async function deleteUser(
   }
 }
 
-// Save multiple user assignments in bulk
+/**
+ * Edits a set of users' roles, identifying the users by their username.
+ *
+ * Requires that the user has the `edit` permission on all edited users.
+ *
+ * ## Oso documentation
+ * This function demonstrates a standard write path––determining the user has
+ * permission to write the data, and permitting the write to occur only if they
+ * do.
+ */
 export async function editUsersRoleByUsername(
   requestor: string,
   updates: User[],
@@ -170,6 +207,8 @@ export async function editUsersRoleByUsername(
       "users.username",
     );
 
+    // Ensure that the users edited are part of the set of users the requestor
+    // has `edit_role` permissions on.
     const queryText = `
         UPDATE users
         SET role = v.role::organization_role

@@ -10,7 +10,9 @@ interface UserProps {
   params: { username: string };
 }
 
-// Render the user's view of the application.
+/**
+ * Render the user's view of the application.
+ */
 export default async function UserPage({ params }: UserProps) {
   let errorMessage: string | null = null;
   let user: User | null = null;

@@ -7,27 +7,29 @@ import { User, Role } from "@/lib/relations";
 import {
   deleteUser,
   editUsersRoleByUsername,
-  UsersWPermissions,
+  ReadableUser,
   getReadableUsersWithPermissions,
 } from "@/actions/user";
 
 interface UserManagerProps {
   requestor: string;
-  usersIn: UsersWPermissions[];
+  usersIn: ReadableUser[];
   roles: Role[];
 }
 
 interface UsersWActions {
-  inner: UsersWPermissions;
+  inner: ReadableUser;
   roleCurr: string;
   onRoleChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   onEdit: () => void;
   onDelete: () => void;
 }
 
-// Provides a component to manage permitted users.
-//
-// This component receives users from `UserCreator` (`usersIn`).
+/**
+ * Provides a component to manage permitted users.
+ *
+ * This component receives users from `UserCreator` (`usersIn`).
+ */
 const UserManager: React.FC<UserManagerProps> = ({
   requestor,
   usersIn,
@@ -35,11 +37,9 @@ const UserManager: React.FC<UserManagerProps> = ({
 }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Convert `UsersWPermissions[]` to `FormData[]`, filtering out any users that
+  // Convert `ReadableUser[]` to `FormData[]`, filtering out any users that
   // the requestor has neither edit nor delete permissions on.
-  function usersActionsFromPermissions(
-    users: UsersWPermissions[],
-  ): UsersWActions[] {
+  function usersActionsFromPermissions(users: ReadableUser[]): UsersWActions[] {
     return (
       users
         // Filter out users without edit or delete permissions
