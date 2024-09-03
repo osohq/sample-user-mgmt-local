@@ -1,15 +1,18 @@
 facts:
-  # Org roles + bootstrapped global roles. Bootstrapping is a workaround until
-  # https://github.com/osohq/oso-service/pull/3127
   has_role(User:_, String:_, Organization:_):
     query: >
       SELECT
-        DISTINCT users.username, users.role::TEXT, o.name
+        DISTINCT users.username, users.role::TEXT, users.org
       FROM
         users
-        JOIN organizations AS o ON
-            -- '_' is the bootstrapped org
-            users.org = '_' OR users.org = o.name
+
+  has_role(User:_, String:_):
+    query: >
+      SELECT
+        DISTINCT users.username, users.role::TEXT
+      FROM
+        users
+      WHERE users.org = '_'
 
   has_relation(User:_, parent, Organization:_):
     query: SELECT username, org FROM users
