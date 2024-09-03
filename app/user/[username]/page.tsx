@@ -4,7 +4,7 @@ import { User } from "@/lib/relations";
 
 import { getReadableUsersWithPermissions } from "@/actions/user";
 
-import { CreateOrgForm } from "./userForms";
+import OrgCreator from "./features/organizations/OrgCreator";
 
 interface UserProps {
   params: { username: string };
@@ -48,7 +48,7 @@ export default async function UserPage({ params }: UserProps) {
             </tbody>
           </table>
           <div>
-            <CreateOrgForm requestor={user.username} />
+            <OrgCreator requestor={user.username} />
           </div>
         </div>
       )}

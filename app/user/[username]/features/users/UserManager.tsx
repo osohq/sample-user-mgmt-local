@@ -1,225 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { useFormStatus, useFormState } from "react-dom";
 import Link from "next/link";
 
-import { User, Org, Role } from "@/lib/relations";
+import { User, Role } from "@/lib/relations";
 import {
-  createUser,
   deleteUser,
   editUsersRoleByUsername,
   UsersWPermissions,
   getReadableUsersWithPermissions,
 } from "@/actions/user";
-import {
-  canCreateOrg,
-  createOrg,
-  getCreateUserOrgs,
-  getOrgRoles,
-} from "@/actions/org";
 
-function SubmitButton({ action }: { action: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <button type="submit" disabled={pending}>
-      {pending ? "Saving..." : action}
-    </button>
-  );
-}
-
-interface CreateUserFormProps {
-  requestor: string;
-  orgsIn: Org[];
-}
-
-export function CreateUserForm({ requestor, orgsIn }: CreateUserFormProps) {
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const [roles, setRoles] = useState<Role[]>([]);
-
-  // We need to provide the username of the user creating the new user to ensure
-  // they're permitted to do so.
-  const createUserWithCreator = createUser.bind(null, { requestor });
-  const [formState, formAction] = useFormState(createUserWithCreator, null);
-  // Triggers re-build of form to reset fields.
-  const [formKey, setFormKey] = useState<number>(0);
-
-  // Organizations that user can create new users on.
-  const [orgs, setOrgs] = useState<Org[]>(orgsIn);
-  // Synchronize orgs with orgsIn.
-  useEffect(() => {
-    setOrgs(orgsIn);
-  }, [orgsIn]);
-
-  // Users to propagate down to the manage users component.
-  const [users, setUsers] = useState<UsersWPermissions[]>([]);
-
-  // Convenience function to update the form data by reaching out to the
-  // database + applying Oso list filtering.
-  async function updateUsers(requestor: string) {
-    const usersRes = await getReadableUsersWithPermissions(requestor);
-    if (usersRes.success) {
-      setUsers(usersRes.value.users);
-    } else {
-      setErrorMessage(usersRes.error);
-    }
-  }
-
-  // Get orgs + users on initial load
-  useEffect(() => {
-    const initializeCreateUserFormState = async () => {
-      const orgsResult = await getCreateUserOrgs(requestor);
-      // Determine the database's values for `organization_role`.
-      const orgRoles = await getOrgRoles();
-
-      if (orgsResult.success && orgRoles.success) {
-        setOrgs(orgsResult.value);
-        setRoles(orgRoles.value);
-        updateUsers(requestor);
-        setErrorMessage(null);
-      } else if (errorMessage === null) {
-        if (!orgsResult.success) {
-          setErrorMessage(orgsResult.error);
-        } else if (!orgRoles.success) {
-          setErrorMessage(orgRoles.error);
-        }
-      }
-    };
-    initializeCreateUserFormState();
-  }, []);
-
-  // Update users whenever new user created.
-  useEffect(() => {
-    if (formState?.success) {
-      // Refresh the page if the form submission was successful to re-fetch new
-      // data.
-      updateUsers(requestor);
-      // Re-render form after successful submission.
-      setFormKey((prevKey) => prevKey + 1);
-      setErrorMessage(null);
-    } else if (!formState?.success) {
-      setErrorMessage(formState?.error as string);
-    }
-  }, [formState]);
-
-  return (
-    <div>
-      {Boolean(orgs?.length) && <h2>Create Users</h2>}
-      {errorMessage && (
-        <div className="error" role="alert">
-          {errorMessage}
-        </div>
-      )}
-      {Boolean(orgs?.length) && (
-        <form action={formAction} key={formKey}>
-          <div>
-            <label htmlFor="username">Username:</label>
-            <input id="username" type="text" name="username" required />
-          </div>
-          <div>
-            <label htmlFor="organization">Organization:</label>
-            <select id="organization" name="organization" required>
-              {orgs.map((org) => (
-                <option key={org.name} value={org.name}>
-                  {org.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="role">Role:</label>
-            <select id="role" name="role" required>
-              {roles.map((role) => (
-                <option key={role.name} value={role.name}>
-                  {role.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <SubmitButton action="Create user" />
-        </form>
-      )}
-      <ManageUsersForm requestor={requestor} usersIn={users} roles={roles} />
-    </div>
-  );
-}
-
-interface CreateOrgFormProps {
-  requestor: string;
-}
-
-export const CreateOrgForm: React.FC<CreateOrgFormProps> = ({ requestor }) => {
-  // We need to provide the username of the user creating the new user to ensure
-  // they're permitted to do so.
-  const createOrgWithCreator = createOrg.bind(null, { requestor });
-  const [orgs, setOrgs] = useState<Org[]>([]);
-  const [createOrgsPerm, setCreateOrgsPerm] = useState<boolean>(false);
-
-  const [formState, formAction] = useFormState(createOrgWithCreator, null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  // Convenience function to update the form data by reaching out to the
-  // database + applying Oso list filtering.
-  async function updateOrgs(requestor: string) {
-    const orgsRes = await getCreateUserOrgs(requestor);
-    if (orgsRes.success) {
-      setOrgs(orgsRes.value);
-    } else {
-      setErrorMessage(orgsRes.error);
-    }
-  }
-
-  // Get orgs + users on initial load
-  useEffect(() => {
-    const initializeCreateUserFormState = async () => {
-      const canCreateOrgs = await canCreateOrg(requestor);
-      if (canCreateOrgs.success) {
-        setCreateOrgsPerm(canCreateOrgs.value);
-      } else {
-        setErrorMessage(canCreateOrgs.error);
-      }
-    };
-    initializeCreateUserFormState();
-  }, []);
-
-  // Once we figure out the `createOrgsPerm`, update the organizations available
-  // with it.
-  useEffect(() => {
-    updateOrgs(requestor);
-  }, [createOrgsPerm]);
-
-  useEffect(() => {
-    if (formState?.success) {
-      updateOrgs(requestor);
-    } else if (!formState?.success) {
-      setErrorMessage(formState?.error as string);
-    }
-  }, [formState]);
-
-  return (
-    <div>
-      <CreateUserForm requestor={requestor} orgsIn={orgs} />
-      {createOrgsPerm && <h2>Create orgs</h2>}
-      {errorMessage && (
-        <div className="error" role="alert">
-          {errorMessage}
-        </div>
-      )}
-      {createOrgsPerm && (
-        <form action={formAction}>
-          <div>
-            <label htmlFor="orgName">Name:</label>
-            <input id="orgName" type="text" name="orgName" required />
-          </div>
-          <SubmitButton action="Add org" />
-        </form>
-      )}
-    </div>
-  );
-};
-
-interface ManageUsersFormProps {
+interface UserManagerProps {
   requestor: string;
   usersIn: UsersWPermissions[];
   roles: Role[];
@@ -233,7 +25,10 @@ interface UsersWActions {
   onDelete: () => void;
 }
 
-export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
+// Provides a component to manage permitted users.
+//
+// This component receives users from `UserCreator` (`usersIn`).
+const UserManager: React.FC<UserManagerProps> = ({
   requestor,
   usersIn,
   roles,
@@ -327,12 +122,10 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
   }
 
   // Edit + Delete buttons
-  type Operation = "edit" | "delete";
-
   async function handleSingleUserOperation(
     requestor: string,
     index: number,
-    operation: Operation,
+    operation: "edit" | "delete",
   ) {
     try {
       ensureOnePendingChange(index);
@@ -475,3 +268,5 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
     </div>
   );
 };
+
+export default UserManager;
