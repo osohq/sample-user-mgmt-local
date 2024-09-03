@@ -12,7 +12,7 @@ import {
   UsersWPermissions,
   getReadableUsersWithPermissions,
 } from "@/actions/user";
-import { createOrg } from "@/actions/org";
+import { createOrg, getCreateUserOrgs } from "@/actions/org";
 
 function SubmitButton({ action }: { action: string }) {
   const { pending } = useFormStatus();
@@ -24,66 +24,102 @@ function SubmitButton({ action }: { action: string }) {
 }
 
 interface CreateUserFormProps {
-  organizations: Org[];
   requestor: string;
   roles: Role[];
 }
 
-export function CreateUserForm({
-  organizations,
-  requestor,
-  roles,
-}: CreateUserFormProps) {
+export function CreateUserForm({ requestor, roles }: CreateUserFormProps) {
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   // We need to provide the username of the user creating the new user to ensure
   // they're permitted to do so.
   const createUserWithCreator = createUser.bind(null, { requestor });
   const [formState, formAction] = useFormState(createUserWithCreator, null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Triggers re-build of form to reset fields.
+  const [formKey, setFormKey] = useState<number>(0);
 
+  // Organizations that user can create new users on.
+  const [orgs, setOrgs] = useState<Org[]>([]);
+  // Users to propagate down to the manage users component.
+  const [users, setUsers] = useState<UsersWPermissions[]>([]);
+
+  // Convenience function to update the form data by reaching out to the
+  // database + applying Oso list filtering.
+  async function updateUsers(requestor: string) {
+    const usersRes = await getReadableUsersWithPermissions(requestor);
+    if (usersRes.success) {
+      setUsers(usersRes.value.users);
+    } else {
+      setErrorMessage(usersRes.error);
+    }
+  }
+
+  // Get orgs + users on initial load
+  useEffect(() => {
+    const initializeCreateUserFormState = async () => {
+      const orgsResult = await getCreateUserOrgs(requestor);
+      if (orgsResult.success) {
+        setOrgs(orgsResult.value);
+        updateUsers(requestor);
+      } else if (errorMessage === null) {
+        setErrorMessage(orgsResult.error);
+      }
+    };
+    initializeCreateUserFormState();
+  }, []);
+
+  // Update users whenever new user created.
   useEffect(() => {
     if (formState?.success) {
       // Refresh the page if the form submission was successful to re-fetch new
       // data.
-      window.location.reload();
+      updateUsers(requestor);
+      // Re-render form after successful submission.
+      setFormKey((prevKey) => prevKey + 1);
+      setErrorMessage(null);
     } else if (!formState?.success) {
       setErrorMessage(formState?.error as string);
     }
-  }, [formState?.success]);
+  }, [formState]);
 
   return (
     <div>
+      {Boolean(orgs.length) && <h2>Create Users</h2>}
       {errorMessage && (
         <div className="error" role="alert">
           {errorMessage}
         </div>
       )}
-      <form action={formAction}>
-        <div>
-          <label htmlFor="username">Username:</label>
-          <input id="username" type="text" name="username" required />
-        </div>
-        <div>
-          <label htmlFor="organization">Organization:</label>
-          <select id="organization" name="organization" required>
-            {organizations.map((org) => (
-              <option key={org.name} value={org.name}>
-                {org.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="role">Role:</label>
-          <select id="role" name="role" required>
-            {roles.map((role) => (
-              <option key={role.name} value={role.name}>
-                {role.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <SubmitButton action="Create user" />
-      </form>
+      {Boolean(orgs.length) && (
+        <form action={formAction} key={formKey}>
+          <div>
+            <label htmlFor="username">Username:</label>
+            <input id="username" type="text" name="username" required />
+          </div>
+          <div>
+            <label htmlFor="organization">Organization:</label>
+            <select id="organization" name="organization" required>
+              {orgs.map((org) => (
+                <option key={org.name} value={org.name}>
+                  {org.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="role">Role:</label>
+            <select id="role" name="role" required>
+              {roles.map((role) => (
+                <option key={role.name} value={role.name}>
+                  {role.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <SubmitButton action="Create user" />
+        </form>
+      )}
+      <ManageUsersForm requestor={requestor} usersIn={users} roles={roles} />
     </div>
   );
 }
@@ -122,6 +158,7 @@ export function CreateOrgForm() {
 
 interface ManageUsersFormProps {
   requestor: string;
+  usersIn: UsersWPermissions[];
   roles: Role[];
 }
 
@@ -135,6 +172,7 @@ interface UsersWActions {
 
 export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
   requestor,
+  usersIn,
   roles,
 }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -159,7 +197,9 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
     );
   }
 
-  const [users, setUsers] = useState<UsersWActions[]>([]);
+  const [users, setUsers] = useState<UsersWActions[]>(
+    usersActionsFromPermissions(usersIn),
+  );
   const [orgUsersMap, setOrgUsersMap] = useState<Map<string, number[]>>(
     new Map(),
   );
@@ -167,6 +207,11 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
   // Use a ref to formData so that closures built over it operate over a
   // reference.
   const usersRef = useRef(users);
+
+  // Update users whenever usersIn changes.
+  useEffect(() => {
+    setUsers(usersActionsFromPermissions(usersIn));
+  }, [usersIn]);
 
   // Whenever users change, update all dependent state.
   useEffect(() => {
@@ -197,11 +242,6 @@ export const ManageUsersForm: React.FC<ManageUsersFormProps> = ({
       setErrorMessage(usersRes.error);
     }
   }
-
-  // On load, generate the table of users.
-  useEffect(() => {
-    updateUsers(requestor);
-  }, []);
 
   const handleRoleChange = (
     e: React.ChangeEvent<HTMLSelectElement>,

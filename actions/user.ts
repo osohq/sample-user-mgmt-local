@@ -87,9 +87,11 @@ export async function getReadableUsersWithPermissions(
 export async function createUser(
   // Bound parameter because `createUser` is used as a form action.
   p: { requestor: string },
-  _prevState: Result<null> | null,
+  // State is total number of submissions; we track this so that repeated
+  // successful resubmissions trigger a state change.
+  prevState: Result<number> | null,
   formData: FormData,
-): Promise<Result<null>> {
+): Promise<Result<number>> {
   const data = {
     username: formData.get("username") as string,
     org: formData.get("organization") as string,
@@ -112,7 +114,11 @@ export async function createUser(
       `INSERT INTO users (username, org, role) VALUES ($1, $2, $3::organization_role);`,
       [data.username, data.org, data.role],
     );
-    return { success: true, value: null };
+    const value =
+      prevState === null || prevState.success === false
+        ? 0
+        : prevState.value + 1;
+    return { success: true, value };
   } catch (error) {
     return handleError(error);
   } finally {
