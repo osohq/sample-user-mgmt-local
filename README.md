@@ -1,8 +1,31 @@
-# Examples
+This code provides a base from which other sample apps should be built.
+Primarily, this code includes a NextJs app w/ a PostgreSQL backend, orchestrated
+through Docker compose.
 
-- `app/user/[username]/page.tsx` demonstrates using local authorization for list
-  filtering, i.e. returning subsets of data from your database based on the
-  policy retained in Oso.
+Feature-wise, this code provides a "boilerplate" multi-tenant user management
+system, which allows:
+
+- Creating new tenants (`Organization`s)
+- Creating and deleting users in those tenants
+- Assigning users' roles within a tenant
+- "Impersonating" a user to view the app as the specified user
+
+Additional apps should retain this feature––either displaying it alongside the
+details of the new app, or allowing users to toggle it open via tabs.
+
+# Documentation + Examples
+
+This app's primary purposes are providing reference and documentation for using
+Oso's local authorization.
+
+While any part of the code might be instructive, the primary set of
+documentation is includes in the "backend" API implementation, found in various
+TypeScript files located in `/actions`.
+
+This code currently uses React server components for the API. Even if you do not
+use React server components in your application, the examples are easily
+adaptable to any API structure––all of the patterns are amenable to any endpoint
+implementation.
 
 # User management "component"
 
@@ -23,13 +46,6 @@ permissions you identified.
   - Initialized with `db_init_template.sql`, which can reference `.env`
     variables.
 - Docker w/ compose to build and run both components
-
-## Component features
-
-- Create organizations
-- Create + delete users in organizations
-- Mange users' roles (`admin`, `member`)
-- View state as user
 
 ## Oso integration
 
@@ -61,13 +77,26 @@ permissions you identified.
 
 ## Notes + TODOs
 
-### global roles
+### Coding style
 
-Currently `global` roles have an impedance mismatch with local authorization and
-many standard rules one might want to write are verboten. To work around this,
-I've added a bootstrapped global organization `_`. This requires hacks in a few
-places that are not great, but figured it was better to make progress with this
-than wait for https://github.com/osohq/oso-service/pull/3127
+Code in this repo + derived sample apps should be semantically thorough, but a
+lack of polish is totally acceptable.
+
+The distinction here is that we must be sure that our recommendations are viable
+in the context of a modern web app. I find it incredibly frustrating when a
+reference app doesn't deal with any the complexities of producing _actual_
+software, and the lack of consideration means that the examples provided are all
+but useless when I am trying to do something.
+
+While this does mean that the apps might take longer to build, they're much
+higher quality and give us many more opportunities to develop empathy with users
+who are trying to use Oso to produce _very_ expensive applications.
+
+### global permissions
+
+Currently `global` rules have an impedance mismatch with local authorization,
+i.e. local authorization cannot authorize users' access to `global` rules. This
+will be fixed once local authorization adopts the query builder API.
 
 ### Styling
 
@@ -81,9 +110,6 @@ remove it and try to re-add it.
 The policy is a bit over-engineered, e.g. editing and deleting users is split
 across separate permissions, even though there are currently no roles that can
 do one but not the other.
-
-I think this is fine for the base because other applications might introduce
-uses for the distinction there.
 
 ### Posting policy
 

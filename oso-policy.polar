@@ -1,3 +1,7 @@
+global {
+  roles = ["admin"];
+}
+
 actor User {
     permissions = ["read", "edit_role", "delete"];
     relations = {
@@ -11,10 +15,12 @@ actor User {
 
 resource Organization {
     roles = ["admin", "member"];
-    permissions = ["read", "create_user"];
+    permissions = ["read", "create_user", "create"];
 
+    "admin" if global "admin";
     "member" if "admin";
 
+    "create" if global "admin";
     "read" if "member";
     "create_user" if "admin";
 }
