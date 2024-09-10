@@ -3,18 +3,22 @@
 import { pool, query } from "@/lib/db";
 import { authorizeUser, oso } from "@/lib/oso";
 import { Org, Role } from "@/lib/relations";
-import { Result, handleError } from "@/lib/result";
+import { Result, stringifyError } from "@/lib/result";
 
 /**
- * Determine if the requestor can create organizations.
+ * Determine if the requestor has the privilege to create organizations.
+ *
+ * This function checks whether a given user (`requestor`) has the necessary
+ * authorization to create an organization, which can be useful for
+ * conditionally rendering UI components based on user permissions.
  *
  * ## Oso documentation
  * This function demonstrates a preemptive check appropriate for determining if
  * a component should render or not.
+ *
+ * @throws {Error} If there is a problem with the database connection.
  */
-export async function canCreateOrg(
-  requestor: string,
-): Promise<Result<boolean>> {
+export async function canCreateOrg(requestor: string): Promise<boolean> {
   const client = await pool.connect();
   try {
     const auth = await authorizeUser(client, requestor, "create", {
@@ -25,9 +29,10 @@ export async function canCreateOrg(
       id: "",
     });
 
-    return { success: true, value: auth };
+    return auth;
   } catch (error) {
-    return handleError(error);
+    console.error("Error in canCreateOrg:", error);
+    throw error;
   } finally {
     client.release();
   }
@@ -48,9 +53,9 @@ export async function canCreateOrg(
 export async function createOrg(
   // Bound parameter because `createUser` is used as a form action.
   p: { requestor: string },
-  _prevState: Result<null> | null,
+  _prevState: Result<string> | null,
   formData: FormData,
-): Promise<Result<null>> {
+): Promise<Result<string>> {
   const data = {
     name: formData.get("orgName") as string,
   };
@@ -62,15 +67,16 @@ export async function createOrg(
       id: data.name,
     });
     if (!auth) {
-      return handleError(`not permitted to create Organization ${data.name}`);
+      throw new Error(`not permitted to create Organization ${data.name}`);
     }
 
     await client.query(`INSERT INTO organizations (name) VALUES ($1);`, [
       data.name,
     ]);
-    return { success: true, value: null };
+    return { success: true, value: data.name };
   } catch (error) {
-    return handleError(error);
+    console.error("Error in createOrg:", error);
+    return { success: false, error: stringifyError(error) };
   } finally {
     client.release();
   }
@@ -82,30 +88,31 @@ export async function createOrg(
  * ## Oso documentation
  * This function demonstrates a standard "authorized list" query, returning a
  * set of resources that the requestor has a specific permission on.
+ *
+ * @throws {Error} If there is a problem with the database connection.
  */
-export async function getCreateUserOrgs(
-  username: string,
-): Promise<Result<Org[]>> {
-  const osoUser = { type: "User", id: username };
-
-  // Determine the organizations for which the user has `create_user`
-  // permissions.
-  const canCreateUserOrgCond = await oso.listLocal(
-    osoUser,
-    "create_user",
-    "Organization",
-    "name",
-  );
-
-  // Inline the condition generated from `listLocal` into a query the get the
-  // organization's names.
-  const canCreateUserOrg = `SELECT organizations.name FROM organizations WHERE ${canCreateUserOrgCond}`;
+export async function getCreateUserOrgs(username: string): Promise<Org[]> {
   const client = await pool.connect();
   try {
+    const osoUser = { type: "User", id: username };
+
+    // Determine the organizations for which the user has `create_user`
+    // permissions.
+    const canCreateUserOrgCond = await oso.listLocal(
+      osoUser,
+      "create_user",
+      "Organization",
+      "name",
+    );
+
+    // Inline the condition generated from `listLocal` into a query the get the
+    // organization's names.
+    const canCreateUserOrg = `SELECT organizations.name FROM organizations WHERE ${canCreateUserOrgCond}`;
     const value = await client.query<Org>(canCreateUserOrg);
-    return { success: true, value: value.rows };
+    return value.rows;
   } catch (error) {
-    return handleError(error);
+    console.error("Error in getCreateUserOrgs:", error);
+    throw error;
   } finally {
     client.release();
   }
@@ -113,15 +120,11 @@ export async function getCreateUserOrgs(
 
 /**
  * Fetch the roles that exist on organizations.
+ *
+ * @throws {Error} If tthere is a problem with the database connection.
  */
-export async function getOrgRoles(): Promise<Result<Role[]>> {
-  try {
-    const value = await query<Role>(
-      `SELECT DISTINCT unnest(enum_range(NULL::organization_role)) AS name`,
-      [],
-    );
-    return { success: true, value };
-  } catch (error) {
-    return handleError(error);
-  }
+export async function getOrgRoles(): Promise<Role[]> {
+  return query<Role>(
+    `SELECT DISTINCT unnest(enum_range(NULL::organization_role)) AS name`,
+  );
 }

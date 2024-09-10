@@ -1,4 +1,4 @@
-// Generic error handling inspired by Rust.
+// Error handling for `useFormState`.
 export type Result<T> = Success<T> | Failure;
 
 interface Success<T> {
@@ -11,15 +11,13 @@ interface Failure {
   error: string;
 }
 
-// Function to handle errors
-export function handleError<T>(error: unknown): Result<T> {
-  console.error("Database operation failed:", error);
-
+// Extracts the most reasonable string value to display as an error.
+export function stringifyError(error: unknown): string {
   if (typeof error === "string") {
-    return { success: false, error };
+    return error;
   } else if (error instanceof Error) {
-    return { success: false, error: error.message };
+    return error.message;
   } else {
-    return { success: false, error: "Unknown error" };
+    return "Unknown error";
   }
 }

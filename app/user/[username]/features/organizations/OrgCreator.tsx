@@ -8,6 +8,7 @@ import { Org } from "@/lib/relations";
 import { canCreateOrg, createOrg, getCreateUserOrgs } from "@/actions/org";
 
 import UserCreator from "../users/UserCreator";
+import { stringifyError } from "@/lib/result";
 
 interface OrgCreatorProps {
   requestor: string;
@@ -35,22 +36,22 @@ const OrgCreator: React.FC<OrgCreatorProps> = ({ requestor }) => {
   // Convenience function to update the form data by reaching out to the
   // database + applying Oso list filtering.
   async function updateOrgs(requestor: string) {
-    const orgsRes = await getCreateUserOrgs(requestor);
-    if (orgsRes.success) {
-      setOrgs(orgsRes.value);
-    } else {
-      setErrorMessage(orgsRes.error);
+    try {
+      const orgsRes = await getCreateUserOrgs(requestor);
+      setOrgs(orgsRes);
+    } catch (e) {
+      setErrorMessage(stringifyError(e));
     }
   }
 
   // Determine if user can create organizations.
   useEffect(() => {
     const initializeCreateOrgFormState = async () => {
-      const canCreateOrgs = await canCreateOrg(requestor);
-      if (canCreateOrgs.success) {
-        setCreateOrgsPerm(canCreateOrgs.value);
-      } else {
-        setErrorMessage(canCreateOrgs.error);
+      try {
+        const canCreateOrgs = await canCreateOrg(requestor);
+        setCreateOrgsPerm(canCreateOrgs);
+      } catch (e) {
+        setErrorMessage(stringifyError(e));
       }
     };
     initializeCreateOrgFormState();
