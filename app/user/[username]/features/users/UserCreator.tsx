@@ -13,6 +13,7 @@ import {
 import { getCreateUserOrgs, getOrgRoles } from "@/actions/org";
 
 import UserManager from "./UserManager";
+import { stringifyError } from "@/lib/result";
 
 interface UserCreatorProps {
   requestor: string;
@@ -51,31 +52,26 @@ const UserCreator: React.FC<UserCreatorProps> = ({ requestor, orgsIn }) => {
   // Convenience function to update the form data by reaching out to the
   // database + applying Oso list filtering.
   async function updateUsers(requestor: string) {
-    const usersRes = await getReadableUsersWithPermissions(requestor);
-    if (usersRes.success) {
-      setUsers(usersRes.value.users);
-    } else {
-      setErrorMessage(usersRes.error);
+    try {
+      const usersRes = await getReadableUsersWithPermissions(requestor);
+      setUsers(usersRes.users);
+    } catch (e) {
+      setErrorMessage(stringifyError(e));
     }
   }
 
   // Get users + roles on initial load
   useEffect(() => {
     const initializeCreateUserFormState = async () => {
-      const orgsResult = await getCreateUserOrgs(requestor);
-      // Determine the database's values for `organization_role`.
-      const orgRoles = await getOrgRoles();
-
-      if (orgsResult.success && orgRoles.success) {
-        setOrgs(orgsResult.value);
-        setRoles(orgRoles.value);
+      try {
+        const orgsResult = await getCreateUserOrgs(requestor);
+        // Determine the database's values for `organization_role`.
+        const orgRoles = await getOrgRoles();
+        setOrgs(orgsResult);
+        setRoles(orgRoles);
         updateUsers(requestor);
-      } else if (errorMessage === null) {
-        if (!orgsResult.success) {
-          setErrorMessage(orgsResult.error);
-        } else if (!orgRoles.success) {
-          setErrorMessage(orgRoles.error);
-        }
+      } catch (e) {
+        setErrorMessage(stringifyError(e));
       }
     };
     initializeCreateUserFormState();

@@ -5,6 +5,7 @@ import { User } from "@/lib/relations";
 import { getReadableUsersWithPermissions } from "@/actions/user";
 
 import OrgCreator from "./features/organizations/OrgCreator";
+import { stringifyError } from "@/lib/result";
 
 interface UserProps {
   params: { username: string };
@@ -19,11 +20,11 @@ export default async function UserPage({ params }: UserProps) {
 
   const { username } = params;
 
-  const readableUsersRes = await getReadableUsersWithPermissions(username);
-  if (readableUsersRes.success) {
-    user = readableUsersRes.value.thisUser;
-  } else {
-    errorMessage = readableUsersRes.error;
+  try {
+    const readableUsersRes = await getReadableUsersWithPermissions(username);
+    user = readableUsersRes.thisUser;
+  } catch (e) {
+    errorMessage = stringifyError(e);
   }
 
   return (

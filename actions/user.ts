@@ -3,7 +3,7 @@
 import { pool } from "@/lib/db";
 import { authorizeUser, oso } from "@/lib/oso";
 import { User } from "@/lib/relations";
-import { Result, handleError } from "@/lib/result";
+import { Result, stringifyError } from "@/lib/result";
 
 /**
  * Identifies a `User` the requestor is permitted to read, as well fields
@@ -28,10 +28,13 @@ export interface ReadableUser {
  * This function demonstrates an advanced for of "authorized list" where, in a
  * single query, we provide a set of users with one permission, and then include
  * details about other permissions in the results of the query.
+ *
+ * @throws {Error} If there is a problem with the database connection, or the
+ * requestor cannot find their own users' details.
  */
 export async function getReadableUsersWithPermissions(
   requestor: string,
-): Promise<Result<{ users: ReadableUser[]; thisUser: User }>> {
+): Promise<{ users: ReadableUser[]; thisUser: User }> {
   const osoUser = { type: "User", id: requestor };
   const client = await pool.connect();
   try {
@@ -84,16 +87,14 @@ export async function getReadableUsersWithPermissions(
     const userIndex = users.findIndex((user) => user.username === requestor);
 
     if (userIndex === -1) {
-      return handleError(`user ${requestor} not found`);
+      throw new Error(`user ${requestor} not found`);
     }
 
     const thisUser: User = users.splice(userIndex, 1)[0];
-    return {
-      success: true,
-      value: { users, thisUser },
-    };
-  } catch (err) {
-    return handleError(err);
+    return { users, thisUser };
+  } catch (error) {
+    console.error("Error in getReadableUsersWithPermissions:", error);
+    throw error;
   } finally {
     client.release();
   }
@@ -112,9 +113,9 @@ export async function getReadableUsersWithPermissions(
 export async function createUser(
   // Bound parameter because `createUser` is used as a form action.
   p: { requestor: string },
-  _prevState: Result<null> | null,
+  _prevState: Result<string> | null,
   formData: FormData,
-): Promise<Result<null>> {
+): Promise<Result<string>> {
   const data = {
     username: formData.get("username") as string,
     org: formData.get("organization") as string,
@@ -128,18 +129,19 @@ export async function createUser(
       id: data.org,
     });
     if (!auth) {
-      return handleError(
-        `not permitted to create user in Organization ${data.org}`,
-      );
+      return {
+        success: false,
+        error: `not permitted to create user in Organization ${data.org}`,
+      };
     }
 
     await client.query(
       `INSERT INTO users (username, org, role) VALUES ($1, $2, $3::organization_role);`,
       [data.username, data.org, data.role],
     );
-    return { success: true, value: null };
+    return { success: true, value: data.username };
   } catch (error) {
-    return handleError(error);
+    return { success: false, error: stringifyError(error) };
   } finally {
     client.release();
   }
@@ -154,11 +156,14 @@ export async function createUser(
  * This function demonstrates a standard write path––determining the user has
  * permission to write the data, and permitting the write to occur only if they
  * do.
+ *
+ * @throws {Error} If there is a problem with the database connection, or the
+ * requestor cannot does not have permission to delete the requested user.
  */
 export async function deleteUser(
   requestor: string,
   username: string,
-): Promise<Result<null>> {
+): Promise<undefined> {
   const client = await pool.connect();
   try {
     const auth = await authorizeUser(client, requestor, "delete", {
@@ -166,13 +171,14 @@ export async function deleteUser(
       id: username,
     });
     if (!auth) {
-      return handleError(`not permitted to delete User ${username}`);
+      throw new Error(`not permitted to delete User ${username}`);
     }
 
     await client.query(`DELETE FROM users WHERE username = $1;`, [username]);
-    return { success: true, value: null };
+    return;
   } catch (error) {
-    return handleError(error);
+    console.error("Error in deleteUser:", error);
+    throw error;
   } finally {
     client.release();
   }
@@ -187,11 +193,14 @@ export async function deleteUser(
  * This function demonstrates a standard write path––determining the user has
  * permission to write the data, and permitting the write to occur only if they
  * do.
+ *
+ * @throws {Error} If there is a problem with the database connection, or the
+ * requestor cannot does not have permission to edit all requested users.
  */
 export async function editUsersRoleByUsername(
   requestor: string,
   updates: User[],
-): Promise<Result<null>> {
+): Promise<undefined> {
   const client = await pool.connect();
 
   const osoUser = { type: "User", id: requestor };
@@ -232,14 +241,15 @@ export async function editUsersRoleByUsername(
     if (r.rowCount !== updates.length) {
       // If these numbers do not align, abort the operation.
       client.query("ROLLBACK");
-      return handleError(`not permitted to edit role of all submitted users`);
+      throw new Error(`not permitted to edit role of all submitted users`);
     } else {
       // If these numbers aligned things are good.
       client.query("COMMIT");
-      return { success: true, value: null };
+      return;
     }
   } catch (error) {
-    return handleError(error);
+    console.error("Error in editUsersRoleByUsername:", error);
+    throw error;
   } finally {
     client.release();
   }

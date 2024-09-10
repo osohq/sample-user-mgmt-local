@@ -10,6 +10,7 @@ import {
   ReadableUser,
   getReadableUsersWithPermissions,
 } from "@/actions/user";
+import { stringifyError } from "@/lib/result";
 
 interface UserManagerProps {
   requestor: string;
@@ -93,11 +94,11 @@ const UserManager: React.FC<UserManagerProps> = ({
   // Convenience function to update the form data by reaching out to the
   // database + applying Oso list filtering.
   async function updateUsers(requestor: string) {
-    const usersRes = await getReadableUsersWithPermissions(requestor);
-    if (usersRes.success) {
-      setUsers(usersActionsFromPermissions(usersRes.value.users));
-    } else {
-      setErrorMessage(usersRes.error);
+    try {
+      const usersRes = await getReadableUsersWithPermissions(requestor);
+      setUsers(usersActionsFromPermissions(usersRes.users));
+    } catch (e) {
+      setErrorMessage(stringifyError(e));
     }
   }
 
@@ -135,7 +136,7 @@ const UserManager: React.FC<UserManagerProps> = ({
     }
 
     const user = usersRef.current[index];
-    const result =
+    try {
       operation === "edit"
         ? await editUsersRoleByUsername(requestor, [
             {
@@ -145,11 +146,9 @@ const UserManager: React.FC<UserManagerProps> = ({
             },
           ])
         : await deleteUser(requestor, user.inner.username);
-
-    if (result.success) {
       await updateUsers(requestor);
-    } else {
-      setErrorMessage(result.error);
+    } catch (e) {
+      setErrorMessage(stringifyError(e));
     }
   }
 
@@ -169,11 +168,11 @@ const UserManager: React.FC<UserManagerProps> = ({
         role: user.roleCurr,
       }));
 
-    const r = await editUsersRoleByUsername(requestor, updatedUsers);
-    if (r.success) {
+    try {
+      await editUsersRoleByUsername(requestor, updatedUsers);
       await updateUsers(requestor);
-    } else {
-      setErrorMessage(r.error);
+    } catch (e) {
+      setErrorMessage(stringifyError(e));
     }
   };
 

@@ -18,7 +18,7 @@ export async function authorizeUser(
   client: PoolClient,
   username: string,
   permission: string,
-  resource: IntoValue<Value>
+  resource: IntoValue<Value>,
 ): Promise<boolean> {
   const osoUser = { type: "User", id: username };
 

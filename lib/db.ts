@@ -43,10 +43,5 @@ export async function query<T>(text: string, params?: any[]): Promise<T[]> {
 
 // Function to execute an insert/update/delete operation
 export async function write(text: string, params?: any[]): Promise<void> {
-  console.log("Next query is write");
-  try {
-    query(text, params);
-  } catch (err) {
-    throw err;
-  }
+  query(text, params);
 }
