@@ -53,8 +53,9 @@ const UserCreator: React.FC<UserCreatorProps> = ({ requestor, orgsIn }) => {
   // database + applying Oso list filtering.
   async function updateUsers(requestor: string) {
     try {
-      const usersRes = await getReadableUsersWithPermissions(requestor);
-      setUsers(usersRes.users);
+      const users = await getReadableUsersWithPermissions(requestor);
+      // Don't let the user manage their own permissions.
+      setUsers(users.filter((user) => user.username !== requestor));
     } catch (e) {
       setErrorMessage(stringifyError(e));
     }
@@ -93,7 +94,13 @@ const UserCreator: React.FC<UserCreatorProps> = ({ requestor, orgsIn }) => {
 
   return (
     <div>
-      {Boolean(orgs?.length) && <h2>Create Users</h2>}
+      {Boolean(orgs?.length) && (
+        <div>
+          <hr />
+          <h2>User management</h2>
+          <h3>Create users</h3>
+        </div>
+      )}
       {errorMessage && (
         <div className="error" role="alert">
           {errorMessage}

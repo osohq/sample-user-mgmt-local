@@ -54,7 +54,7 @@ export async function createOrg(
   // Bound parameter because `createUser` is used as a form action.
   p: { requestor: string },
   _prevState: Result<string> | null,
-  formData: FormData,
+  formData: FormData
 ): Promise<Result<string>> {
   const data = {
     name: formData.get("orgName") as string,
@@ -102,7 +102,7 @@ export async function getCreateUserOrgs(username: string): Promise<Org[]> {
       osoUser,
       "create_user",
       "Organization",
-      "name",
+      "name"
     );
 
     // Inline the condition generated from `listLocal` into a query the get the
@@ -121,10 +121,47 @@ export async function getCreateUserOrgs(username: string): Promise<Org[]> {
 /**
  * Fetch the roles that exist on organizations.
  *
- * @throws {Error} If tthere is a problem with the database connection.
+ * @throws {Error} If there is a problem with the database connection.
  */
 export async function getOrgRoles(): Promise<Role[]> {
   return query<Role>(
-    `SELECT DISTINCT unnest(enum_range(NULL::organization_role)) AS name`,
+    `SELECT DISTINCT unnest(enum_range(NULL::organization_role)) AS name`
   );
+}
+
+/**
+ * Return the name of the organization that a user belongs to.
+ *
+ * @throws {Error} If there is a problem with the database connection or there
+ * are no users with the specified username.
+ */
+export async function getUserOrg(
+  requestor: string,
+  username: string
+): Promise<string> {
+  const client = await pool.connect();
+  try {
+    const auth = await authorizeUser(client, requestor, "read", {
+      type: "User",
+      id: username,
+    });
+    if (!auth) {
+      throw new Error(`not permitted to read User ${username}`);
+    }
+
+    const users = await client.query<{ org: string }>(
+      `SELECT org FROM users WHERE username = $1;`,
+      [username]
+    );
+    const rows = users.rows;
+    if (rows.length != 1) {
+      throw new Error(`cannot find user ${username}`);
+    }
+    return rows[0].org;
+  } catch (error) {
+    console.error("Error in getUserOrg:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
 }

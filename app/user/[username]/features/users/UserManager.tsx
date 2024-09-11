@@ -57,10 +57,10 @@ const UserManager: React.FC<UserManagerProps> = ({
   }
 
   const [users, setUsers] = useState<UsersWActions[]>(
-    usersActionsFromPermissions(usersIn),
+    usersActionsFromPermissions(usersIn)
   );
   const [orgUsersMap, setOrgUsersMap] = useState<Map<string, number[]>>(
-    new Map(),
+    new Map()
   );
 
   // Use a ref to formData so that closures built over it operate over a
@@ -95,8 +95,10 @@ const UserManager: React.FC<UserManagerProps> = ({
   // database + applying Oso list filtering.
   async function updateUsers(requestor: string) {
     try {
-      const usersRes = await getReadableUsersWithPermissions(requestor);
-      setUsers(usersActionsFromPermissions(usersRes.users));
+      const users = await getReadableUsersWithPermissions(requestor);
+      // Don't let the user manage their own permissions.
+      const filteredUsers = users.filter((user) => user.username !== requestor);
+      setUsers(usersActionsFromPermissions(filteredUsers));
     } catch (e) {
       setErrorMessage(stringifyError(e));
     }
@@ -104,7 +106,7 @@ const UserManager: React.FC<UserManagerProps> = ({
 
   const handleRoleChange = (
     e: React.ChangeEvent<HTMLSelectElement>,
-    index: number,
+    index: number
   ) => {
     const newFormData = [...usersRef.current];
     newFormData[index].roleCurr = e.target.value;
@@ -116,7 +118,7 @@ const UserManager: React.FC<UserManagerProps> = ({
     usersRef.current.forEach((user, index) => {
       if (user.inner.role !== user.roleCurr && exceptIndex !== index) {
         throw new Error(
-          `Cannot edit or delete individual users with multiple users' changes pending. Try 'Save changed roles'.`,
+          `Cannot edit or delete individual users with multiple users' changes pending. Try 'Save changed roles'.`
         );
       }
     });
@@ -126,7 +128,7 @@ const UserManager: React.FC<UserManagerProps> = ({
   async function handleSingleUserOperation(
     requestor: string,
     index: number,
-    operation: "edit" | "delete",
+    operation: "edit" | "delete"
   ) {
     try {
       ensureOnePendingChange(index);
@@ -181,7 +183,7 @@ const UserManager: React.FC<UserManagerProps> = ({
       {/* Only display table if there are orgs */}
       {Boolean(orgUsersMap.size) && (
         <div>
-          <h2>Manage users</h2>
+          <h3>Manage users</h3>
           {errorMessage && (
             <div className="error" role="alert">
               {errorMessage}
@@ -192,7 +194,8 @@ const UserManager: React.FC<UserManagerProps> = ({
             .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
             .map((org) => (
               <div key={org}>
-                <h3>{org}</h3>
+                {/* Show org if there are multiple. */}
+                {orgUsersMap.size > 1 && <h3>{org}</h3>}
                 <table>
                   <thead>
                     <tr>

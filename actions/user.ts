@@ -6,26 +6,120 @@ import { User } from "@/lib/relations";
 import { Result, stringifyError } from "@/lib/result";
 
 /**
- * Identifies a `User` the requestor is permitted to read, as well fields
+ * Identifies a `User`, as well as fields describing its permissions on its
+ * parent organization.
+ */
+export interface UserWOrgPermissions {
+  username: string;
+  org: string;
+  role: string;
+  // Permissions
+  readOrg: boolean;
+  createUser: boolean;
+  createOrg: boolean;
+  createDoc: boolean;
+}
+
+/**
+ * Identifies a `User` the requestor is permitted to read, as well as fields
  * describing other permissions.
  */
 export interface ReadableUser {
   username: string;
   org: string;
   role: string;
+  // Permissions
   editRole: boolean;
   deleteUser: boolean;
 }
 
 /**
- * Returns readable users with additional permissions set.
+ * Fetches the specified user, as well as their permissions on their
+ * organization.
  *
- * The results are separated into `thisUser`, which identifies the requestor's
- * user, and `users`, which are all other users the requestor has `read` access
- * on.
+ * This is a super-admin-like function that intentionally omits any
+ * authorization.
+ *
+ * @throws {Error} If there is a problem with the database connection or the
+ * user does not exist.
+ */
+export async function getUserWOrgPermissions(
+  username: string
+): Promise<UserWOrgPermissions> {
+  const osoUser = { type: "User", id: username };
+  const client = await pool.connect();
+  try {
+    // Determine the users for which this user has `read` permissions. This will
+    // form the base of which users this user might be able to manage.
+    const readOrgCond = await oso.listLocal(
+      osoUser,
+      "read",
+      "Organization",
+      "org"
+    );
+
+    // Determine the users for which this user has `read` permissions. This will
+    // form the base of which users this user might be able to manage.
+    const createUsersCond = await oso.listLocal(
+      osoUser,
+      "create_user",
+      "Organization",
+      "org"
+    );
+
+    // Determine the users for which this user has `read` permissions. This will
+    // form the base of which users this user might be able to manage.
+    const createOrgCond = await oso.listLocal(
+      osoUser,
+      "create",
+      "Organization",
+      "org"
+    );
+
+    // Determine the users for which this user has `read` permissions. This will
+    // form the base of which users this user might be able to manage.
+    const createDocCond = await oso.listLocal(
+      osoUser,
+      "create_doc",
+      "Organization",
+      "org"
+    );
+
+    const user = await client.query<UserWOrgPermissions>(
+      `SELECT
+        username,
+        org,
+        role,
+        ${readOrgCond} as "readOrg",
+        ${createUsersCond} as "createUser",
+        ${createOrgCond} as "createOrg",
+        ${createDocCond} as "createDoc"
+      FROM users
+      WHERE username = $1`,
+      [username]
+    );
+    if (user.rowCount != 1) {
+      throw new Error(`cannot find User ${username}`);
+    }
+
+    return user.rows[0];
+  } catch (error) {
+    console.error("Error in getUser:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Returns readable users with additional data about the requestor's permissions
+ * on those users.
+ *
+ * This data can include the requestor's own data, so the requestor might need
+ * to be filtered out before using the data.
  *
  * ## Oso documentation
- * This function demonstrates an advanced for of "authorized list" where, in a
+ * This function demonstrates an advanced form of "authorized list" where, in a
  * single query, we provide a set of users with one permission, and then include
  * details about other permissions in the results of the query.
  *
@@ -33,8 +127,8 @@ export interface ReadableUser {
  * requestor cannot find their own users' details.
  */
 export async function getReadableUsersWithPermissions(
-  requestor: string,
-): Promise<{ users: ReadableUser[]; thisUser: User }> {
+  requestor: string
+): Promise<ReadableUser[]> {
   const osoUser = { type: "User", id: requestor };
   const client = await pool.connect();
   try {
@@ -44,7 +138,7 @@ export async function getReadableUsersWithPermissions(
       osoUser,
       "read",
       "User",
-      "username",
+      "username"
     );
 
     // Determine the users for which this user has `edit_role` permissions.
@@ -52,7 +146,7 @@ export async function getReadableUsersWithPermissions(
       osoUser,
       "edit_role",
       "User",
-      "username",
+      "username"
     );
 
     // Determine the users for which this user has `delete` permissions.
@@ -60,7 +154,7 @@ export async function getReadableUsersWithPermissions(
       osoUser,
       "delete",
       "User",
-      "username",
+      "username"
     );
 
     // Determine all visible users (`readableUsersCond`), along with whether or
@@ -78,20 +172,10 @@ export async function getReadableUsersWithPermissions(
         ${deleteUsersCond} as "deleteUser"
       FROM users
       WHERE ${readableUsersCond}
-      ORDER BY username`,
+      ORDER BY username`
     );
     const users = usersWPermissionsRes.rows;
-
-    // Extract this user from the set of all users because we don't want them to
-    // be able to edit themselves.
-    const userIndex = users.findIndex((user) => user.username === requestor);
-
-    if (userIndex === -1) {
-      throw new Error(`user ${requestor} not found`);
-    }
-
-    const thisUser: User = users.splice(userIndex, 1)[0];
-    return { users, thisUser };
+    return users;
   } catch (error) {
     console.error("Error in getReadableUsersWithPermissions:", error);
     throw error;
@@ -114,7 +198,7 @@ export async function createUser(
   // Bound parameter because `createUser` is used as a form action.
   p: { requestor: string },
   _prevState: Result<string> | null,
-  formData: FormData,
+  formData: FormData
 ): Promise<Result<string>> {
   const data = {
     username: formData.get("username") as string,
@@ -137,7 +221,7 @@ export async function createUser(
 
     await client.query(
       `INSERT INTO users (username, org, role) VALUES ($1, $2, $3::organization_role);`,
-      [data.username, data.org, data.role],
+      [data.username, data.org, data.role]
     );
     return { success: true, value: data.username };
   } catch (error) {
@@ -162,7 +246,7 @@ export async function createUser(
  */
 export async function deleteUser(
   requestor: string,
-  username: string,
+  username: string
 ): Promise<undefined> {
   const client = await pool.connect();
   try {
@@ -199,7 +283,7 @@ export async function deleteUser(
  */
 export async function editUsersRoleByUsername(
   requestor: string,
-  updates: User[],
+  updates: User[]
 ): Promise<undefined> {
   const client = await pool.connect();
 
@@ -213,7 +297,7 @@ export async function editUsersRoleByUsername(
       osoUser,
       "edit_role",
       "User",
-      "users.username",
+      "users.username"
     );
 
     // Ensure that the users edited are part of the set of users the requestor
@@ -249,6 +333,50 @@ export async function editUsersRoleByUsername(
     }
   } catch (error) {
     console.error("Error in editUsersRoleByUsername:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Fetches all users that belong to the specified organization that the
+ * requestor can read.
+ *
+ * ## Oso documentation
+ * This function demonstrates a standard write path––determining the user has
+ * permission to write the data, and permitting the write to occur only if they
+ * do.
+ *
+ * @throws {Error} If there is a problem with the database connection, or the
+ * requestor cannot does not have permission to edit all requested users.
+ */
+export async function getOrgUsers(
+  requestor: string,
+  org: string
+): Promise<User[]> {
+  const osoUser = { type: "User", id: requestor };
+  const client = await pool.connect();
+  try {
+    // Determine the users for which this user has `read` permissions.
+    const readableUsersCond = await oso.listLocal(
+      osoUser,
+      "read",
+      "User",
+      "username"
+    );
+
+    const orgUsers = await client.query<User>(
+      `SELECT username, org, role
+        FROM users
+        WHERE org = $1 AND ${readableUsersCond}
+        ORDER BY username`,
+      [org]
+    );
+
+    return orgUsers.rows;
+  } catch (error) {
+    console.error("Error in getOrgUsers:", error);
     throw error;
   } finally {
     client.release();
