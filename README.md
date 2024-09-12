@@ -53,7 +53,9 @@ permissions you identified.
 
 ## Expected UX
 
-1. Convert `.env.example` to `.env` with the appropriate values set.
+1. Add `/oso-policy.polar` as the policy in the environment.
+1. Convert `.env.example` to `.env` with the appropriate values set, i.e. adding
+   your API key.
 1. Run the app locally via:
    ```sh
    docker compose up --build
