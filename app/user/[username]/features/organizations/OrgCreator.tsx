@@ -65,12 +65,15 @@ const OrgCreator: React.FC<OrgCreatorProps> = ({ requestor }) => {
 
   // Whenever creating new orgs, update the orgs.
   useEffect(() => {
-    if (formState?.success) {
+    if (!formState) {
+      return;
+    }
+    if (formState.success) {
       updateOrgs(requestor);
       // Re-render form after successful submission.
       setFormKey((prevKey) => prevKey + 1);
-    } else if (!formState?.success) {
-      setErrorMessage(formState?.error as string);
+    } else {
+      setErrorMessage(formState.error);
     }
   }, [formState]);
 
