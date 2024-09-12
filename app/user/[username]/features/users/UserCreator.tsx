@@ -80,15 +80,18 @@ const UserCreator: React.FC<UserCreatorProps> = ({ requestor, orgsIn }) => {
 
   // Update users whenever new user created.
   useEffect(() => {
-    if (formState?.success) {
+    if (!formState) {
+      return;
+    }
+    if (formState.success) {
       // Refresh the page if the form submission was successful to re-fetch new
       // data.
       updateUsers(requestor);
       // Re-render form after successful submission.
       setFormKey((prevKey) => prevKey + 1);
       setErrorMessage(null);
-    } else if (!formState?.success) {
-      setErrorMessage(formState?.error as string);
+    } else {
+      setErrorMessage(formState.error);
     }
   }, [formState]);
 

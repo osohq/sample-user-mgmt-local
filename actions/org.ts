@@ -57,7 +57,7 @@ export async function createOrg(
   formData: FormData
 ): Promise<Result<string>> {
   const data = {
-    name: formData.get("orgName") as string,
+    name: formData.get("orgName")! as string,
   };
 
   const client = await pool.connect();
