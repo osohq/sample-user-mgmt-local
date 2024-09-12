@@ -21,24 +21,17 @@ export interface UserWOrgPermissions {
 }
 
 /**
- * Identifies a `User` the requestor is permitted to read, as well as fields
- * describing other permissions.
- */
-export interface ReadableUser {
-  username: string;
-  org: string;
-  role: string;
-  // Permissions
-  editRole: boolean;
-  deleteUser: boolean;
-}
-
-/**
  * Fetches the specified user, as well as their permissions on their
  * organization.
  *
  * This is a super-admin-like function that intentionally omits any
  * authorization.
+ *
+ * ## Oso documentation
+ * Demonstrates an advanced form of local authorization, which relies on
+ * evaluating many properties of a resource in a single query. This design
+ * reduces the number of roundtrips to the database your application needs to
+ * perform.
  *
  * @throws {Error} If there is a problem with the database connection or the
  * user does not exist.
@@ -49,8 +42,6 @@ export async function getUserWOrgPermissions(
   const osoUser = { type: "User", id: username };
   const client = await pool.connect();
   try {
-    // Determine the users for which this user has `read` permissions. This will
-    // form the base of which users this user might be able to manage.
     const readOrgCond = await oso.listLocal(
       osoUser,
       "read",
@@ -58,8 +49,6 @@ export async function getUserWOrgPermissions(
       "org"
     );
 
-    // Determine the users for which this user has `read` permissions. This will
-    // form the base of which users this user might be able to manage.
     const createUsersCond = await oso.listLocal(
       osoUser,
       "create_user",
@@ -67,20 +56,11 @@ export async function getUserWOrgPermissions(
       "org"
     );
 
-    // Determine the users for which this user has `read` permissions. This will
-    // form the base of which users this user might be able to manage.
+    // TODO: This should be removed from `Organization` and become a global
+    // permission.
     const createOrgCond = await oso.listLocal(
       osoUser,
       "create",
-      "Organization",
-      "org"
-    );
-
-    // Determine the users for which this user has `read` permissions. This will
-    // form the base of which users this user might be able to manage.
-    const createDocCond = await oso.listLocal(
-      osoUser,
-      "create_doc",
       "Organization",
       "org"
     );
@@ -92,8 +72,7 @@ export async function getUserWOrgPermissions(
         role,
         ${readOrgCond} as "readOrg",
         ${createUsersCond} as "createUser",
-        ${createOrgCond} as "createOrg",
-        ${createDocCond} as "createDoc"
+        ${createOrgCond} as "createOrg"
       FROM users
       WHERE username = $1`,
       [username]
@@ -112,19 +91,32 @@ export async function getUserWOrgPermissions(
 }
 
 /**
- * Returns readable users with additional data about the requestor's permissions
- * on those users.
+ * Identifies a `User` the requestor is permitted to read, as well as fields
+ * describing other permissions.
+ */
+export interface ReadableUser {
+  username: string;
+  org: string;
+  role: string;
+  // Permissions
+  editRole: boolean;
+  deleteUser: boolean;
+}
+
+/**
+ * Get the list of users which `requestor` can `read`, as well as additional
+ * information about permissions on those users.
  *
  * This data can include the requestor's own data, so the requestor might need
  * to be filtered out before using the data.
  *
  * ## Oso documentation
- * This function demonstrates an advanced form of "authorized list" where, in a
- * single query, we provide a set of users with one permission, and then include
- * details about other permissions in the results of the query.
+ * Demonstrates an advanced form of local authorization, which relies on
+ * evaluating many properties of a resource in a single query. This design
+ * reduces the number of roundtrips to the database your application needs to
+ * perform.
  *
- * @throws {Error} If there is a problem with the database connection, or the
- * requestor cannot find their own users' details.
+ * @throws {Error} If there is a problem with the database connection.
  */
 export async function getReadableUsersWithPermissions(
   requestor: string
@@ -187,12 +179,15 @@ export async function getReadableUsersWithPermissions(
 /**
  * Creates a new user on an organization with a specified role.
  *
- * Requires that the user has the `create_user` permission on the organization.
+ * Requires `requestor` to have the `create_user` permission on the
+ * organization.
  *
  * ## Oso documentation
- * This function demonstrates a standard write path––determining the user has
- * permission to write the data, and permitting the write to occur only if they
- * do.
+ * Demonstrates a standard authorized endpoint––ensuring the user has a specific
+ * permission, and permitting it to occur only if they do.
+ *
+ * @throws {Error} If there is a problem with the database connection or
+ * authorization fails.
  */
 export async function createUser(
   // Bound parameter because `createUser` is used as a form action.
@@ -201,9 +196,9 @@ export async function createUser(
   formData: FormData
 ): Promise<Result<string>> {
   const data = {
-    username: formData.get("username") as string,
-    org: formData.get("organization") as string,
-    role: formData.get("role") as string,
+    username: formData.get("username")! as string,
+    org: formData.get("organization")! as string,
+    role: formData.get("role")! as string,
   };
 
   const client = await pool.connect();
@@ -234,15 +229,14 @@ export async function createUser(
 /**
  * Deletes the specified user.
  *
- * Requires that the user has the `delete` permission on the specified user.
+ * Requires `requestor` to have the `delete` permission for the specified user.
  *
  * ## Oso documentation
- * This function demonstrates a standard write path––determining the user has
- * permission to write the data, and permitting the write to occur only if they
- * do.
+ * Demonstrates a standard authorized endpoint––ensuring the user has a specific
+ * permission, and permitting it to occur only if they do.
  *
- * @throws {Error} If there is a problem with the database connection, or the
- * requestor cannot does not have permission to delete the requested user.
+ * @throws {Error} If there is a problem with the database connection or
+ * authorization fails.
  */
 export async function deleteUser(
   requestor: string,
@@ -271,12 +265,12 @@ export async function deleteUser(
 /**
  * Edits a set of users' roles, identifying the users by their username.
  *
- * Requires that the user has the `edit` permission on all edited users.
+ * Requires `requestor` to have the `edit` permission on all edited users.
  *
  * ## Oso documentation
- * This function demonstrates a standard write path––determining the user has
- * permission to write the data, and permitting the write to occur only if they
- * do.
+ * Demonstrates a complex approach to authorizing many resources at once using
+ * local authorization, relying on a transaction to verify authorization
+ * occurred as the requestor expected.
  *
  * @throws {Error} If there is a problem with the database connection, or the
  * requestor cannot does not have permission to edit all requested users.
@@ -324,7 +318,6 @@ export async function editUsersRoleByUsername(
     // that passed the condition expressed by `editRoleAuthorized`.
     if (r.rowCount !== updates.length) {
       // If these numbers do not align, abort the operation.
-      client.query("ROLLBACK");
       throw new Error(`not permitted to edit role of all submitted users`);
     } else {
       // If these numbers aligned things are good.
@@ -332,6 +325,7 @@ export async function editUsersRoleByUsername(
       return;
     }
   } catch (error) {
+    client.query("ROLLBACK");
     console.error("Error in editUsersRoleByUsername:", error);
     throw error;
   } finally {
@@ -340,16 +334,14 @@ export async function editUsersRoleByUsername(
 }
 
 /**
- * Fetches all users that belong to the specified organization that the
- * requestor can read.
+ * Get all users in a specified organization for which `requestor` has the
+ * `read` permission.
  *
  * ## Oso documentation
- * This function demonstrates a standard write path––determining the user has
- * permission to write the data, and permitting the write to occur only if they
- * do.
+ * This function demonstrates a standard read path with local authorization,
+ * relying on `listLocal` to generate a condition for a query.
  *
- * @throws {Error} If there is a problem with the database connection, or the
- * requestor cannot does not have permission to edit all requested users.
+ * @throws {Error} If there is a problem with the database connection.
  */
 export async function getOrgUsers(
   requestor: string,

@@ -11,14 +11,20 @@ export const oso = new Oso("https://cloud.osohq.com", key, {
 });
 
 /**
- * Convenience function for checking authorization requests against the local
- * database.
+ * Convenience function to authorizes `user` to perform `permission` on
+ * `resource` using local authorization.
+ *
+ * ## Oso documentation
+ * Demonstrates the most standard use of local authorization in which Oso
+ * provides the full query to execute to determine authorization.
+ *
+ * @throws {Error} If there is a problem with the database connection.
  */
 export async function authorizeUser(
   client: PoolClient,
   username: string,
   permission: string,
-  resource: IntoValue<Value>,
+  resource: IntoValue<Value>
 ): Promise<boolean> {
   const osoUser = { type: "User", id: username };
 
