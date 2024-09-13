@@ -7,7 +7,7 @@ if (!key) {
 }
 
 export const oso = new Oso("https://cloud.osohq.com", key, {
-  dataBindings: "/app/oso-local-auth.yaml",
+  dataBindings: "./oso-local-auth.yaml",
 });
 
 /**

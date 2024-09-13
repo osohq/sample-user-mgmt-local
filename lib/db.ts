@@ -10,18 +10,18 @@ function getEnvVar(key: string): string {
   return value;
 }
 
-const user = getEnvVar("DB_USER");
-const password = getEnvVar("DB_PASS");
-const database = getEnvVar("DB_NAME");
+let connectionString: string = '';
+if (typeof process.env["DB_CONNECTION_STRING"] === "string") {
+  connectionString = process.env["DB_CONNECTION_STRING"];
+} else {
+  const user = getEnvVar("DB_USER");
+  const password = getEnvVar("DB_PASS");
+  const database = getEnvVar("DB_NAME");
+  connectionString = `postgresql://${user}:${password}@db/${database}`;
+}
 
 // Our primary database connection pool
-export const pool = new Pool({
-  user,
-  password,
-  database,
-  host: "db",
-  port: 5432,
-});
+export const pool = new Pool({ connectionString });
 
 // Function to execute a query with parameters
 export async function query<T>(text: string, params?: any[]): Promise<T[]> {
