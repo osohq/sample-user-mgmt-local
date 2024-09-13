@@ -13,19 +13,30 @@ system, which allows:
 Additional apps should retain this feature––either displaying it alongside the
 details of the new app, or allowing users to toggle it open via tabs.
 
+# Developing + deployment
+
+This repo is meant to be the "home base" for this set of sample apps to ensure
+that they all easily retain a consistent base. Each additional sample app should
+be managed as a branch of this repo.
+
+| App                                                                   | Branch       |
+| --------------------------------------------------------------------- | ------------ |
+| [File sharing](https://github.com/osohq/sample-file-share-local-node) | `drive-like` |
+
+When making changes to the full-fledged sample apps, you can push to their repo
+using the appropriate branch, e.g. to push changes on `drive-like` to the file
+sharing app repo:
+
+```
+git push git@github.com:osohq/sample-file-share-local-node.git +drive-like:main
+```
+
 # Documentation + Examples
 
 This app's primary purposes are providing reference and documentation for using
-Oso's local authorization.
-
-While any part of the code might be instructive, the primary set of
-documentation is includes in the "backend" API implementation, found in various
-TypeScript files located in `/actions`.
-
-This code currently uses React server components for the API. Even if you do not
-use React server components in your application, the examples are easily
-adaptable to any API structure––all of the patterns are amenable to any endpoint
-implementation.
+Oso's local authorization. It is not meant to be a full-fledged sample
+application that demonstrates how to use React or Typescript in general (though
+using SDK features is great).
 
 # User management "component"
 
@@ -78,6 +89,40 @@ permissions you identified.
    application as they would, i.e. impersonation.
 
 ## Notes + TODOs
+
+### New apps
+
+#### Getting started
+
+Check out the `main` branch, and then start a new branch with a descriptive name
+of the new application, e.g.
+
+- `hr-like`
+- `fintech-like`
+- `crm-like`
+- `health-like`
+
+#### Repo naming
+
+When you are ready to convert the branch into a full-fledged repo, use the
+following naming convention:
+
+`sample-{app descritpion}-local-node`
+
+This indiciates that this is a sample app of some type that uses `local`
+authorization, and is built in `node`.
+
+#### README
+
+When developing new applications, start with the `README.md` from the
+`drive-like` branch, which you can also see at
+<https://github.com/osohq/sample-file-share-local-node>.
+
+#### Documentation
+
+All of these apps should contain a _ton_ of inline documentation. For an example
+of the expected documentation, see the `main` branch's `ts` files in the
+`actions` directory.
 
 ### Coding style
 
