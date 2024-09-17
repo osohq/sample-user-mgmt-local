@@ -10,15 +10,15 @@ function getEnvVar(key: string): string {
   return value;
 }
 
-let connectionString: string = '';
-if (typeof process.env["DB_CONNECTION_STRING"] === "string") {
-  connectionString = process.env["DB_CONNECTION_STRING"];
-} else {
-  const user = getEnvVar("DB_USER");
-  const password = getEnvVar("DB_PASS");
-  const database = getEnvVar("DB_NAME");
-  connectionString = `postgresql://${user}:${password}@db/${database}`;
-}
+const user = getEnvVar("DB_USER");
+const password = getEnvVar("DB_PASS");
+const database = getEnvVar("DB_NAME");
+const host = process.env["DB_HOST"] || "db";
+const port = process.env["DB_PORT"] || "5432";
+const ssl = process.env["DB_SSL"] || "";
+
+const connectionString = `postgresql://${user}:${password}@${host}:${port}/${database}`
+  + (ssl && `?sslmode=${ssl}`);
 
 // Our primary database connection pool
 export const pool = new Pool({ connectionString });
