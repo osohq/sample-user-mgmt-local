@@ -7,17 +7,6 @@ import { authorizeUser, osoUserMgmt as oso } from "@/lib/oso";
 import { User } from "@/lib/relations";
 import { Result, stringifyError } from "@/lib/result";
 
-export interface OrgUser {
-  username: string;
-  org: string;
-  role: string;
-  // Permissions
-  readOrg: boolean;
-  createUser: boolean;
-  createOrg: boolean;
-  createDoc: boolean;
-}
-
 /**
  * Identifies a `User`, as well as fields describing its permissions on its
  * parent organization.
