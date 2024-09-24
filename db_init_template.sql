@@ -1,7 +1,11 @@
--- substitutions occur in db_init_generate.sh
+-- substitutions occur in db_init_generate.sh; if not using the orchestrated DB,
+-- you can skip this section.
 GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};
 
 \connect ${DB_NAME};
+
+-- the remainder of these commands create the data model + data for the
+-- application
 
 CREATE TABLE organizations (name TEXT PRIMARY KEY);
 
