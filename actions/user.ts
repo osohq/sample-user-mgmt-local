@@ -42,6 +42,15 @@ export async function getUserWOrgPermissions(
   const osoUser = { type: "User", id: username };
   const client = await pool.connect();
   try {
+    // At this point, we only know the username but not the organization to
+    // which the user belongs. While we could restructure this endpoint to use
+    // `oso.authorizeLocal`, it would require an additional roundtrip to the
+    // database, which is likely less efficient than having the DB check for the
+    // existence of a value in a subquery (i.e. `oso.listLocal`).
+    //
+    // However, if we _did_ know the organization, using `oso.authorizeLocal` as
+    // a subquery in the projection would almost certainly have better
+    // performance because it would result in an optimized point lookup.
     const readOrgCond = await oso.listLocal(
       osoUser,
       "read",
@@ -49,6 +58,7 @@ export async function getUserWOrgPermissions(
       "org"
     );
 
+    // Ditto the comment on `readOrgCond`.
     const createUsersCond = await oso.listLocal(
       osoUser,
       "create_user",
