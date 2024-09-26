@@ -44,13 +44,12 @@ export async function getUserWOrgPermissions(
   try {
     // At this point, we only know the username but not the organization to
     // which the user belongs. While we could restructure this endpoint to use
-    // `oso.authorizeLocal`, it would require an additional roundtrip to the
+    // `oso.actionsLocal`, it would require an additional roundtrip to the
     // database, which is likely less efficient than having the DB check for the
     // existence of a value in a subquery (i.e. `oso.listLocal`).
     //
-    // However, if we _did_ know the organization, using `oso.authorizeLocal` as
-    // a subquery in the projection would almost certainly have better
-    // performance because it would result in an optimized point lookup.
+    // However, if we _did_ know the organization, using `oso.actionsLocal`
+    // would almost certainly have better performance.
     const readOrgCond = await oso.listLocal(
       osoUser,
       "read",
@@ -136,6 +135,9 @@ export async function getReadableUsersWithPermissions(
   try {
     // Determine the users for which this user has `read` permissions. This will
     // form the base of which users this user might be able to manage.
+    //
+    // TODO: once local authorization has access to the query builder API, this
+    // can be simplified.
     const readableUsersCond = await oso.listLocal(
       osoUser,
       "read",
@@ -144,6 +146,9 @@ export async function getReadableUsersWithPermissions(
     );
 
     // Determine the users for which this user has `edit_role` permissions.
+    //
+    // TODO: once local authorization has access to the query builder API, this
+    // can be simplified.
     const editableRoleUsersCond = await oso.listLocal(
       osoUser,
       "edit_role",
@@ -152,6 +157,9 @@ export async function getReadableUsersWithPermissions(
     );
 
     // Determine the users for which this user has `delete` permissions.
+    //
+    // TODO: once local authorization has access to the query builder API, this
+    // can be simplified.
     const deleteUsersCond = await oso.listLocal(
       osoUser,
       "delete",
