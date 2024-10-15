@@ -1,9 +1,17 @@
 "use server";
 
-import { pool } from "@/lib/db";
-import { authorizeUser, oso } from "@/lib/oso";
-import { User, Document, DocumentUserRole, Role } from "@/lib/relations";
+import { docsPool as pool } from "@/lib/db";
+import { osoDocMgmt as oso } from "@/lib/oso";
+import { User, Document } from "@/lib/relations";
 import { Result, stringifyError } from "@/lib/result";
+
+import {
+  assignDocUserRole,
+  auth as docAuth,
+  list as docList,
+  actions as docActions,
+} from "./doc_perms";
+import { authorizeUser } from "@/lib/oso";
 
 /**
  * Get all documents on which the `user` has the `read` permission.
@@ -17,21 +25,15 @@ import { Result, stringifyError } from "@/lib/result";
 export async function getReadableDocuments(user: User): Promise<Document[]> {
   const client = await pool.connect();
   try {
-    const osoUser = { type: "User", id: user.username };
-
-    // Determine the organizations for which the user has `create_user`
-    // permissions.
-    const readableDocsCond = await oso.listLocal(
-      osoUser,
-      "read",
-      "Document",
-      "id"
-    );
+    const ids = await docList(client, user.username, "read");
+    if (ids.length === 0) {
+      return [];
+    }
 
     // Inline the condition generated from `listLocal` into a query the get the
     // organization's names.
-    const readableDocs = `SELECT id, org, title, public FROM documents WHERE ${readableDocsCond}`;
-    const docs = await client.query<Document>(readableDocs);
+    const readableDocs = `SELECT id, org, title, public FROM documents WHERE id = ANY($1::int[])`;
+    const docs = await client.query<Document>(readableDocs, [ids]);
     return docs.rows;
   } catch (error) {
     console.error("Error in getReadableDocuments:", error);
@@ -65,10 +67,13 @@ export async function createDocument(
 
   const client = await pool.connect();
   try {
-    const auth = await authorizeUser(client, requestor.username, "create_doc", {
-      type: "Organization",
-      id: requestor.org,
-    });
+    const auth = await authorizeUser(
+      oso,
+      client,
+      requestor.username,
+      "create_doc",
+      { type: "Organization", id: requestor.org }
+    );
 
     if (!auth) {
       return {
@@ -80,15 +85,19 @@ export async function createDocument(
     client.query("BEGIN");
 
     const docIdRes = await client.query<{ id: number }>(
-      `INSERT INTO documents (org, title, public) SELECT org, $2, false FROM users WHERE username = $1 RETURNING id`,
-      [requestor.username, data.title]
+      `INSERT INTO documents (org, title, public) VALUES ($1, $2, false) RETURNING id`,
+      [requestor.org, data.title]
     );
     const docId = docIdRes.rows[0].id;
 
-    await client.query(
-      `INSERT INTO document_user_roles (document_id, username, "role") VALUES ($1, $2, 'owner')`,
-      [docId, requestor.username]
+    await assignDocUserRole(
+      client,
+      requestor.username,
+      requestor.username,
+      "owner",
+      docId
     );
+
     client.query("COMMIT");
 
     return { success: true, value: docId };
@@ -139,45 +148,29 @@ export async function getDocumentWPermissions(
   requestor: string,
   id: number
 ): Promise<ReadableDocument> {
-  const osoUser = { type: "User", id: requestor };
-  const document = {
-    type: "Document",
-    id: id.toString(),
-  };
   const client = await pool.connect();
   try {
     // Determine actions available on document.
-    const actionsQuery = await oso.actionsLocal(osoUser, document);
-    const readableDocsQuery = `SELECT
-        id,
-        org,
-        title,
-        public,
-        'delete' = ANY(actions) AS delete,
-        'assign_owner' = ANY(actions) AS "assignOwner",
-        'manage_share' = ANY(actions) as "manageShare",
-        'edit' = ANY(actions) AS edit,
-        'delete' = ANY(actions) AS delete,
-        'set_public' = ANY(actions) AS "setPublic"
-      FROM documents
-      LEFT JOIN LATERAL (
-        SELECT array_agg(actions) AS actions FROM (
-            ${actionsQuery}
-        ) AS actions
-      ) AS actions ON true
-      WHERE id = $1 AND 'read' = ANY (actions)`;
-
-    const readableDocs = await client.query<ReadableDocument>(
-      readableDocsQuery,
-      [id]
-    );
-
-    const rows = readableDocs.rows;
-    if (rows.length != 1) {
+    const actions = await docActions(client, requestor, id);
+    if (!actions.includes("read")) {
       throw new Error(`cannot find Document ${id}`);
     }
 
-    return readableDocs.rows[0];
+    const getDoc = `SELECT id, org, title, public FROM documents WHERE id = $1`;
+    const docRows = await client.query<Document>(getDoc, [id]);
+    if (docRows.rowCount != 1) {
+      throw new Error(`cannot find Document ${id}`);
+    }
+    const doc: Document = docRows.rows[0];
+
+    return {
+      ...doc,
+      assignOwner: actions.includes("assign_owner"),
+      delete: actions.includes("delete"),
+      edit: actions.includes("edit"),
+      manageShare: actions.includes("manage_share"),
+      setPublic: actions.includes("set_public"),
+    };
   } catch (error) {
     console.error("Error in getDocumentWPermissions:", error);
     throw error;
@@ -212,10 +205,7 @@ export async function updateDocumentTitle(
 
   const client = await pool.connect();
   try {
-    const auth = await authorizeUser(client, username, "edit", {
-      type: "Document",
-      id: `${id}`,
-    });
+    const auth = await docAuth(client, username, "edit", id);
     if (!auth) {
       throw new Error(`not permitted to write to Document ${id}`);
     }
@@ -231,6 +221,7 @@ export async function updateDocumentTitle(
 
     return { success: true, value: title.rows[0].valueOf() };
   } catch (error) {
+    console.error("Error in updateDocumentTitle:", error);
     return { success: false, error: stringifyError(error) };
   } finally {
     client.release();
@@ -256,10 +247,7 @@ export async function setPublic(
 ): Promise<boolean> {
   const client = await pool.connect();
   try {
-    const auth = await authorizeUser(client, requestor, "set_public", {
-      type: "Document",
-      id: `${id}`,
-    });
+    const auth = await docAuth(client, requestor, "set_public", id);
     if (!auth) {
       throw new Error(
         `not permitted to change public setting of Document ${id}`
@@ -300,10 +288,7 @@ export async function deleteDoc(
 ): Promise<undefined> {
   const client = await pool.connect();
   try {
-    const auth = await authorizeUser(client, requestor, "delete", {
-      type: "Document",
-      id: `${id}`,
-    });
+    const auth = await docAuth(client, requestor, "delete", id);
     if (!auth) {
       throw new Error(`not permitted to delete Document ${id}`);
     }
@@ -312,121 +297,6 @@ export async function deleteDoc(
     return;
   } catch (error) {
     console.error("Error in deleteDoc:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-/**
- * Get all users and their roles on the specified document.
- *
- * Requires `requestor` to have the `manage_share` permission on the document.
- * Additionally, this function returns only users on which the requestor has the
- * `read` permission.
- *
- * ## Oso documentation
- * Demonstrates complex, multi-tiered authorization. The requestor must have
- * permissions on both a primary resource, as well as a list of resources
- * associated with it.
- *
- * @throws {Error} If there is a problem with the database connection or the
- * action is not permitted.
- */
-export async function getDocUserRoles(
-  requestor: string,
-  id: number
-): Promise<DocumentUserRole[]> {
-  const client = await pool.connect();
-  try {
-    const auth = await authorizeUser(client, requestor, "manage_share", {
-      type: "Document",
-      id: `${id}`,
-    });
-    if (!auth) {
-      throw new Error(`not permitted to read details of Document ${id}`);
-    }
-
-    const osoUser = { type: "User", id: requestor };
-
-    // Determine the users for which the user has `read` permission.
-    const readableUsersCond = await oso.listLocal(
-      osoUser,
-      "read",
-      "User",
-      "username"
-    );
-
-    const docUserRoles = await client.query<DocumentUserRole>(
-      `SELECT document_id AS id, username, "role"
-        FROM document_user_roles
-        WHERE document_id = $1 AND ${readableUsersCond};`,
-      [id]
-    );
-
-    return docUserRoles.rows;
-  } catch (error) {
-    console.error("Error in getDocUserRoles:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-/**
- * Get all roles that the user can assign to the specified ID.
- *
- * Requires `requestor` to have `manage_share` permission on the document. The
- * set of roles includes the `owner` role iff `requestor` has the `assign_owner`
- * permission.
- *
- * ## Oso documentation
- * Demonstrates complex, multi-layered authorization.
- *
- * @throws {Error} If there is a problem with the database connection.
- */
-export async function getAssignableDocRoles(
-  requestor: string,
-  id: number
-): Promise<Role[]> {
-  const client = await pool.connect();
-  try {
-    const manageShareAuth = await authorizeUser(
-      client,
-      requestor,
-      "manage_share",
-      {
-        type: "Document",
-        id: `${id}`,
-      }
-    );
-    if (!manageShareAuth) {
-      return [];
-    }
-
-    const value = await client.query<Role>(
-      `SELECT DISTINCT unnest(enum_range(NULL::document_role)) AS name`,
-      []
-    );
-    let roles = value.rows;
-
-    const assignOwnerAuth = await authorizeUser(
-      client,
-      requestor,
-      "assign_owner",
-      {
-        type: "Document",
-        id: `${id}`,
-      }
-    );
-
-    if (!assignOwnerAuth) {
-      roles = roles.filter((role) => role.name != "owner");
-    }
-
-    return roles;
-  } catch (error) {
-    console.error("Error in getAssignableDocRoles:", error);
     throw error;
   } finally {
     client.release();
@@ -451,10 +321,10 @@ export async function getDocumentOrg(
 ): Promise<string> {
   const client = await pool.connect();
   try {
-    const auth = await authorizeUser(client, requestor, "read", {
-      type: "Document",
-      id: id.toString(),
-    });
+    // We infer that if the user has `"read"` permissions on the document, they
+    // must also have `"read"` permissions on the organization to which the
+    // document belongs.
+    const auth = await docAuth(client, requestor, "read", id);
     if (!auth) {
       throw new Error(`not permitted to read Document ${id}`);
     }
@@ -470,243 +340,6 @@ export async function getDocumentOrg(
     return org.rows[0].org;
   } catch (error) {
     console.error("Error in getDocumentOrg:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-/**
- * Assign a user (`username`) `role` on the document.
- *
- * Requires `requestor` to have the `manage_share` permission on the document.
- * If the specified role is `owner`, the requestor must also have the
- * `assign_owner` permission.
- *
- * ## Oso documentation
- * Demonstrates complex, multi-layered authorization.
- *
- * @throws {Error} If there is a problem with the database connection or the
- * action is not permitted.
- */
-export async function assignDocUserRole(
-  // Bound parameter because `createUser` is used as a form action.
-  p: { requestor: string; id: number },
-  _prevState: Result<{ username: string; role: string }> | null,
-  formData: FormData
-): Promise<Result<{ username: string; role: string }>> {
-  const data = {
-    username: formData.get("username")! as string,
-    role: formData.get("role")! as string,
-  };
-
-  const client = await pool.connect();
-  try {
-    const auth = await authorizeUser(client, p.requestor, "manage_share", {
-      type: "Document",
-      id: p.id.toString(),
-    });
-    if (!auth) {
-      throw new Error(`not permitted to manage share for Document ${p.id}`);
-    }
-    if (data.role === "owner") {
-      const auth = await authorizeUser(client, p.requestor, "assign_owner", {
-        type: "Document",
-        id: p.id.toString(),
-      });
-      if (!auth) {
-        throw new Error(`not permitted to assign owner for Document ${p.id}`);
-      }
-    }
-
-    await client.query(
-      `INSERT INTO document_user_roles (document_id, username, role) VALUES ($1, $2, $3::document_role);`,
-      [p.id, data.username, data.role]
-    );
-    return { success: true, value: data };
-  } catch (error) {
-    return { success: false, error: stringifyError(error) };
-  } finally {
-    client.release();
-  }
-}
-
-/**
- * Update `username`'s role on the specified document to the specified `role`.
- *
- * Requires the `requestor` to have the `manage_share` permission on the
- * document. If the `username` has the `owner` role, or the caller tries to set
- * the user's role to `owner`, `requestor` must also have the `assign_owner`
- * permission.
- *
- * Additionally, the document must have at least one owner after this
- * modification.
- *
- * ## Oso documentation
- * Demonstrates complex, multi-layered authorization.
- *
- * @throws {Error} If there is a problem with the database connection,
- * authorization fails, or the specified user's role is concurrently removed.
- */
-export async function updateDocUserRole(
-  requestor: string,
-  id: number,
-  username: string,
-  role: string
-): Promise<undefined> {
-  const client = await pool.connect();
-  try {
-    const manageShareAuth = await authorizeUser(
-      client,
-      requestor,
-      "manage_share",
-      {
-        type: "Document",
-        id: id.toString(),
-      }
-    );
-    if (!manageShareAuth) {
-      throw new Error(`not permitted to manage share of Document ${id}`);
-    }
-    if (role === "owner") {
-      const assignOwnerAuth = await authorizeUser(
-        client,
-        requestor,
-        "assign_owner",
-        {
-          type: "Document",
-          id: id.toString(),
-        }
-      );
-      if (!assignOwnerAuth) {
-        throw new Error(`not permitted to assign owner of Document ${id}`);
-      }
-    }
-
-    await client.query("BEGIN");
-    await client.query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;");
-    const roleCurr = await client.query<{ role: string }>(
-      `SELECT "role" FROM document_user_roles WHERE document_id = $1 AND username = $2;`,
-      [id, username]
-    );
-
-    if (roleCurr.rowCount != 1) {
-      throw new Error(`User ${username} does not have role on Document ${id}`);
-    }
-
-    if (roleCurr.rows[0].role === "owner") {
-      const assignOwnerAuth = await authorizeUser(
-        client,
-        requestor,
-        "assign_owner",
-        {
-          type: "Document",
-          id: id.toString(),
-        }
-      );
-      if (!assignOwnerAuth) {
-        throw new Error(`not permitted to change owner of Document ${id}`);
-      }
-    }
-
-    await client.query(
-      `UPDATE document_user_roles SET "role" = $1::document_role WHERE document_id = $2 AND username = $3;`,
-      [role, id, username]
-    );
-
-    const owners = await client.query<{ count: number }>(
-      `SELECT COUNT(*) FROM document_user_roles WHERE "role" = 'owner' AND document_id = $1;`,
-      [id]
-    );
-
-    if (owners.rows[0].count < 1) {
-      throw new Error(`Document ${id} must have at least one owner`);
-    } else {
-      await client.query("COMMIT");
-      return;
-    }
-  } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("Error in updateDocUserRole:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-/**
- * Remove a user's role from a document.
- *
- * Requires `requestor` to have the `manage_share` permission on the document.
- * If the specified user has the `owner` role, the requestor must have the
- * `assign_owner` permission.
- *
- * Additionally, the document must have at least one owner after this
- * modification.
- *
- * ## Oso documentation
- * Demonstrates complex, multi-layered authorization.
- *
- * @throws {Error} If there is a problem with the database connection or
- * authorization fails.
- */
-export async function deleteDocUserRole(
-  requestor: string,
-  id: number,
-  username: string
-): Promise<undefined> {
-  const client = await pool.connect();
-  try {
-    const manageShareAuth = await authorizeUser(
-      client,
-      requestor,
-      "manage_share",
-      {
-        type: "Document",
-        id: id.toString(),
-      }
-    );
-    if (!manageShareAuth) {
-      throw new Error(`not permitted to manage share of Document ${id}`);
-    }
-
-    await client.query("BEGIN");
-    await client.query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;");
-
-    const deletedRole = await client.query<{ role: string }>(
-      `DELETE FROM document_user_roles WHERE document_id = $1 AND username = $2 RETURNING "role";`,
-      [id, username]
-    );
-
-    if (deletedRole.rows[0].role === "owner") {
-      const assignOwnerAuth = await authorizeUser(
-        client,
-        requestor,
-        "assign_owner",
-        {
-          type: "Document",
-          id: id.toString(),
-        }
-      );
-      if (!assignOwnerAuth) {
-        throw new Error(`not permitted to assign owner of Document ${id}`);
-      }
-    }
-
-    const ownerCount = await client.query<{ count: number }>(
-      `SELECT COUNT(*) FROM document_user_roles WHERE "role" = 'owner' AND document_id = $1;`,
-      [id]
-    );
-
-    if (ownerCount.rows[0].count < 1) {
-      throw new Error(`Document ${id} must have at least one owner`);
-    } else {
-      await client.query("COMMIT");
-      return;
-    }
-  } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("Error in deleteDocUserRole:", error);
     throw error;
   } finally {
     client.release();

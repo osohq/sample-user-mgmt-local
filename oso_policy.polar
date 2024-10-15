@@ -105,4 +105,4 @@ resource Document {
 # For more details about how this interacts with other components of the system,
 # see:
 # - env_template_db_init.sql for the application's SQL schema
-# - oso_local_auth_user_mgmt.yaml for how we correlate the policy to the SQL schema
+# - oso_local_auth_*.yml for services' local authorization config
