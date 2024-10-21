@@ -6,8 +6,11 @@ import { getEnvVar } from "./util";
 const key = getEnvVar("OSO_CLOUD_API_KEY");
 const osoHost = getEnvVar("OSO_URL");
 
-export const oso = new Oso(osoHost, key, {
-  dataBindings: "/app/oso_local_auth.yaml",
+/**
+ * Oso client for user management service.
+ */
+export const osoUserMgmt = new Oso(osoHost, key, {
+  dataBindings: "/app/oso_local_auth_user_mgmt.yml",
 });
 
 /**
@@ -21,6 +24,7 @@ export const oso = new Oso(osoHost, key, {
  * @throws {Error} If there is a problem with the database connection.
  */
 export async function authorizeUser(
+  oso: Oso,
   client: PoolClient,
   username: string,
   permission: string,

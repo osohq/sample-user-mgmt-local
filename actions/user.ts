@@ -1,7 +1,7 @@
 "use server";
 
-import { pool } from "@/lib/db";
-import { authorizeUser, oso } from "@/lib/oso";
+import { usersPool as pool } from "@/lib/db";
+import { authorizeUser, osoUserMgmt as oso } from "@/lib/oso";
 import { User } from "@/lib/relations";
 import { Result, stringifyError } from "@/lib/result";
 
@@ -221,10 +221,17 @@ export async function createUser(
 
   const client = await pool.connect();
   try {
-    const auth = await authorizeUser(client, p.requestor, "create_user", {
+    const org = {
       type: "Organization",
       id: data.org,
-    });
+    };
+    const auth = await authorizeUser(
+      oso,
+      client,
+      p.requestor,
+      "create_user",
+      org
+    );
     if (!auth) {
       return {
         success: false,
@@ -262,7 +269,7 @@ export async function deleteUser(
 ): Promise<undefined> {
   const client = await pool.connect();
   try {
-    const auth = await authorizeUser(client, requestor, "delete", {
+    const auth = await authorizeUser(oso, client, requestor, "delete", {
       type: "User",
       id: username,
     });

@@ -2,11 +2,12 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 
-import { query } from "@/lib/db";
+import { usersPool, query } from "@/lib/db";
 import { User } from "@/lib/relations";
 
 export default async function Home() {
   const users = await query<User>(
+    usersPool,
     "SELECT username, org, role::TEXT FROM users ORDER BY username"
   );
 

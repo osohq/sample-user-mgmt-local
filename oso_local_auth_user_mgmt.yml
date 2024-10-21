@@ -1,3 +1,7 @@
+# Local auth configuration for the user management service.
+#
+# Each service should has its own local auth configuration file, which should be
+# provided to the user-specific Oso client.
 facts:
   # Correlates `actor User` to `resource Organization` roles.
   has_role(User:_, String:_, Organization:_):
@@ -28,4 +32,6 @@ sql_types:
 # For more details about how this interacts with other components of the system,
 # see:
 # - db_init_template.sql for the application's SQL schema
-# - oso-policy.polar for this application's Polar policy, for use in Oso Cloud
+# - oso_local_auth_*.yml for service's local authorization config
+# - (unused) env_template_oso_sync.yml for the sync/reconcile tool config
+# - oso_policy.polar for this application's Polar policy, for use in Oso Cloud
