@@ -1972,10 +1972,10 @@ optionator@^0.9.3:
     type-check "^0.4.0"
     word-wrap "^1.2.5"
 
-oso-cloud@^2.0.1:
-  version "2.0.1"
-  resolved "https://registry.yarnpkg.com/oso-cloud/-/oso-cloud-2.0.1.tgz#be0705ed33ab813260a0743a05932919ab3dad37"
-  integrity sha512-gpBpKDbzgLFicdPE6Zw6nz4JPwRDLdU2FVVf/0qPAL5YP1uU90vS2yPQJBGnKA4uV8o5+QDC68UxAJCwsMKT6Q==
+oso-cloud@^2.1.0:
+  version "2.1.0"
+  resolved "https://registry.yarnpkg.com/oso-cloud/-/oso-cloud-2.1.0.tgz#be1c7e094053be5e885b2b0304fbd45424b96212"
+  integrity sha512-Fi0Rdhid8e9A6Pip9uJxMd9nrT225qtMPFwEiUoyUQRNL0cj8FwXGT8KFbvQZhdottj4U/fZOPCvaP139beDAA==
   dependencies:
     cross-fetch "^4.0.0"
     fetch-retry "^5.0.5"
