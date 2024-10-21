@@ -1,0 +1,27 @@
+# This file details how to use the reconcile tool to sync data from your local
+# database to Oso's centralized authorization data storage.
+#
+# Note that this file is included for documentation purposes but is not meant to
+# be used with Oso developer accounts. Its use is commented out in
+# docker-compose.yml.
+
+FROM public.ecr.aws/osohq/reconcile:latest
+
+RUN apt-get update && apt-get install -y gettext-base
+
+# Copy the .env file, the template SQL file, and the script to the container
+COPY .env .
+COPY env_template_oso_sync.yml .
+COPY env_template_init.sh .
+
+# Make the script executable
+RUN chmod +x env_template_init.sh
+
+# Run the script to generate the oso_sync.yml file
+RUN /bin/sh ./env_template_init.sh
+
+WORKDIR /app
+
+COPY oso_sync.yml /app/config.yaml
+
+ENTRYPOINT ["/app/reconcile", "experimental", "reconcile", "/app/config.yaml", "--perform-updates"]
