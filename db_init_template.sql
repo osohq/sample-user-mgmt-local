@@ -23,9 +23,9 @@ CREATE TABLE users (
 );
 
 -- Our special `global` organization
-INSERT INTO organizations (name) VALUES ('_');
+INSERT INTO organizations (name) VALUES ('_root');
 -- A default, bootstrap user
-INSERT INTO users (username, org, "role") VALUES ('root', '_', 'admin');
+INSERT INTO users (username, org, "role") VALUES ('root', '_root', 'admin');
 
 -- For more details about how this interacts with other components of the system,
 -- see:

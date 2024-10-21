@@ -6,8 +6,8 @@ facts:
       FROM users
 
   # Correlates `actor User` to `global` roles by treating any role assigned to a
-  # user in the `_` org as a `global` role. This might work differently than you
-  # might expect by elevating the role of all `_` users, rather than having a
+  # user in the `_root` org as a `global` role. This might work differently than you
+  # might expect by elevating the role of all `_root` users, rather than having a
   # distinct set of `global` users.
   has_role(User:_, String:_):
     query: >
@@ -15,7 +15,7 @@ facts:
         DISTINCT users.username, users.role::TEXT
       FROM
         users
-      WHERE users.org = '_'
+      WHERE users.org = '_root'
 
   # Provides the `parent` relationship between `actor User` and `resource
   # Organization`.
