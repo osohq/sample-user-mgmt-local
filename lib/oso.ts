@@ -1,12 +1,12 @@
 import { PoolClient } from "pg";
 import { Oso, IntoValue, Value } from "oso-cloud";
 
-const key = process.env.OSO_CLOUD_API_KEY;
-if (!key) {
-  throw new Error(`OSO_CLOUD_API_KEY not set in .env`);
-}
+import { getEnvVar } from "./util";
 
-export const oso = new Oso("https://cloud.osohq.com", key, {
+const key = getEnvVar("OSO_CLOUD_API_KEY");
+const osoHost = getEnvVar("OSO_URL");
+
+export const oso = new Oso(osoHost, key, {
   dataBindings: "/app/oso_local_auth.yaml",
 });
 
