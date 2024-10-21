@@ -30,4 +30,4 @@ INSERT INTO users (username, org, "role") VALUES ('root', '_root', 'admin');
 -- For more details about how this interacts with other components of the system,
 -- see:
 -- - oso-policy.polar for this application's Polar policy, for use in Oso Cloud
--- - oso-local-auth.yaml for how we correlate the policy to the SQL schema
+-- - oso_local_auth.yaml for how we correlate the policy to the SQL schema
