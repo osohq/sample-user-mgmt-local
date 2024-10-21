@@ -1,0 +1,38 @@
+# This file details how to use the reconcile tool to sync data from your local
+# database to Oso's centralized authorization data storage.
+#
+# Note that this file is included for documentation purposes but is not meant to
+# be used with Oso developer accounts. Its use is commented out in
+# docker-compose.yml.
+
+facts:
+  # Correlates `actor User` to `resource Organization` roles.
+  has_role(User:_, String:_, Organization:_):
+    db: user_db
+    query: >
+      SELECT users.username, users.role::TEXT, users.org
+      FROM users
+
+  # Correlates `actor User` to `global` roles by treating any role assigned to a
+  # user in the `_` org as a `global` role. This might work differently than you
+  # might expect by elevating the role of all `_` users, rather than having a
+  # distinct set of `global` users.
+  has_role(User:_, String:_):
+    db: user_db
+    query: >
+      SELECT
+        DISTINCT users.username, users.role::TEXT
+      FROM
+        users
+      WHERE users.org = '_root'
+
+  # Provides the `parent` relationship between `actor User` and `resource
+  # Organization`.
+  has_relation(User:_, parent, Organization:_):
+    db: user_db
+    query: SELECT username, org FROM users
+
+dbs:
+  user_db:
+    # substitutions occur in env_template_init.sh;
+    connection_string: postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/users?sslmode=${DB_SSL}
