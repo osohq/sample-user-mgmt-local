@@ -18,7 +18,6 @@ export interface UserWOrgPermissions {
   // Permissions
   readOrg: boolean;
   createUser: boolean;
-  createOrg: boolean;
   createDoc: boolean;
 }
 
@@ -64,14 +63,13 @@ export async function getUserWOrgPermissions(
     ) AS actions`;
 
     const res = await client.query<{ actions: string[] }>(orgActionsQuery);
-    const actions = res.rows[0].actions;
+    const orgActions = res.rows[0].actions;
 
     return {
       ...user,
-      readOrg: actions.includes("read"),
-      createUser: actions.includes("create_user"),
-      createOrg: actions.includes("create"),
-      createDoc: actions.includes("create_doc"),
+      readOrg: orgActions.includes("read"),
+      createUser: orgActions.includes("create_user"),
+      createDoc: orgActions.includes("create_doc"),
     };
   } catch (error) {
     console.error("Error in getUser:", error);
