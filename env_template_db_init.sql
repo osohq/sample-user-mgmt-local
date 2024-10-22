@@ -1,8 +1,13 @@
--- substitutions occur in db_init_generate.sh; if not using the orchestrated DB,
--- you can skip this section.
-GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};
+-- Each service should have its own database to enforce logical isolation
+-- between services (which alleviates the headache of spinning up multiple
+-- physical services).
+CREATE DATABASE users;
 
-\connect ${DB_NAME};
+-- substitutions occur in env_template_init.sh; if not using the orchestrated
+-- DB, you can skip this section.
+GRANT ALL PRIVILEGES ON DATABASE users TO ${DB_USER};
+
+\connect users;
 
 -- the remainder of these commands create the data model + data for the
 -- application
@@ -29,5 +34,5 @@ INSERT INTO users (username, org, "role") VALUES ('root', '_root', 'admin');
 
 -- For more details about how this interacts with other components of the system,
 -- see:
--- - oso-policy.polar for this application's Polar policy, for use in Oso Cloud
--- - oso_local_auth.yaml for how we correlate the policy to the SQL schema
+-- - oso_policy.polar for this application's Polar policy, for use in Oso Cloud
+-- - oso_local_auth_user_mgmt.yml for how we correlate the policy to the SQL schema

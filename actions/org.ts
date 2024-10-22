@@ -1,7 +1,7 @@
 "use server";
 
-import { pool, query } from "@/lib/db";
-import { authorizeUser, oso } from "@/lib/oso";
+import { usersPool as pool, query } from "@/lib/db";
+import { authorizeUser, osoUserMgmt as oso } from "@/lib/oso";
 import { Org, Role } from "@/lib/relations";
 import { Result, stringifyError } from "@/lib/result";
 
@@ -21,7 +21,7 @@ import { Result, stringifyError } from "@/lib/result";
 export async function canCreateOrg(requestor: string): Promise<boolean> {
   const client = await pool.connect();
   try {
-    const auth = await authorizeUser(client, requestor, "create", {
+    const auth = await authorizeUser(oso, client, requestor, "create", {
       type: "Organization",
       // Ensure user has `create` privilege on an arbitrary, non-existent
       // organization. This API will be more ergonomic once local authorization
@@ -62,7 +62,7 @@ export async function createOrg(
 
   const client = await pool.connect();
   try {
-    const auth = await authorizeUser(client, p.requestor, "create", {
+    const auth = await authorizeUser(oso, client, p.requestor, "create", {
       type: "Organization",
       id: data.name,
     });
@@ -125,6 +125,7 @@ export async function getCreateUserOrgs(username: string): Promise<Org[]> {
  */
 export async function getOrgRoles(): Promise<Role[]> {
   return query<Role>(
+    pool,
     `SELECT DISTINCT unnest(enum_range(NULL::organization_role)) AS name`
   );
 }
@@ -141,7 +142,7 @@ export async function getUserOrg(
 ): Promise<string> {
   const client = await pool.connect();
   try {
-    const auth = await authorizeUser(client, requestor, "read", {
+    const auth = await authorizeUser(oso, client, requestor, "read", {
       type: "User",
       id: username,
     });
