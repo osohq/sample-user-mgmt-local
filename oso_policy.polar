@@ -10,14 +10,13 @@ resource Organization {
     roles = ["admin", "member"];
 
     # Actions which users may try to take on an organization.
-    permissions = ["read", "create_user", "create"];
+    permissions = ["read", "create_user"];
 
     # Role implication.
     "admin" if global "admin";
     "member" if "admin";
 
     # RBAC
-    "create" if global "admin";
     "read" if "member";
     "create_user" if "admin";
 }
@@ -27,6 +26,9 @@ global {
   # In our applications, `global` admins are meant to have unfettered access to
   # resources.
   roles = ["admin"];
+  permissions = ["create_org"];
+
+  "create_org" if "admin";
 }
 
 # When accessing an application, you do so as a `User`.
@@ -56,5 +58,5 @@ actor User {
 
 # For more details about how this interacts with other components of the system,
 # see:
-# - db_init_template.sql for the application's SQL schema
-# - oso_local_auth_user_mgmt.yml for how we correlate the policy to the SQL schema
+# - env_template_db_init.sql for the application's SQL schema
+# - oso_local_auth_user_mgmt.yaml for how we correlate the policy to the SQL schema

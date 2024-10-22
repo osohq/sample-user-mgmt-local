@@ -1,5 +1,7 @@
 "use server";
 
+import { typedVar } from "oso-cloud";
+
 import { usersPool as pool } from "@/lib/db";
 import { authorizeUser, osoUserMgmt as oso } from "@/lib/oso";
 import { User } from "@/lib/relations";
@@ -16,7 +18,6 @@ export interface UserWOrgPermissions {
   // Permissions
   readOrg: boolean;
   createUser: boolean;
-  createOrg: boolean;
   createDoc: boolean;
 }
 
@@ -28,10 +29,8 @@ export interface UserWOrgPermissions {
  * authorization.
  *
  * ## Oso documentation
- * Demonstrates an advanced form of local authorization, which relies on
- * evaluating many properties of a resource in a single query. This design
- * reduces the number of roundtrips to the database your application needs to
- * perform.
+ * Demonstrates a the `actionsLocal` API, which is useful for fetching all of a
+ * user's permissions in a single query.
  *
  * @throws {Error} If there is a problem with the database connection or the
  * user does not exist.
@@ -42,55 +41,36 @@ export async function getUserWOrgPermissions(
   const osoUser = { type: "User", id: username };
   const client = await pool.connect();
   try {
-    // At this point, we only know the username but not the organization to
-    // which the user belongs. While we could restructure this endpoint to use
-    // `oso.actionsLocal`, it would require an additional roundtrip to the
-    // database, which is likely less efficient than having the DB check for the
-    // existence of a value in a subquery (i.e. `oso.listLocal`).
-    //
-    // However, if we _did_ know the organization, using `oso.actionsLocal`
-    // would almost certainly have better performance.
-    const readOrgCond = await oso.listLocal(
-      osoUser,
-      "read",
-      "Organization",
-      "org"
-    );
-
-    // Ditto the comment on `readOrgCond`.
-    const createUsersCond = await oso.listLocal(
-      osoUser,
-      "create_user",
-      "Organization",
-      "org"
-    );
-
-    // TODO: This should be removed from `Organization` and become a global
-    // permission.
-    const createOrgCond = await oso.listLocal(
-      osoUser,
-      "create",
-      "Organization",
-      "org"
-    );
-
-    const user = await client.query<UserWOrgPermissions>(
-      `SELECT
-        username,
-        org,
-        role,
-        ${readOrgCond} as "readOrg",
-        ${createUsersCond} as "createUser",
-        ${createOrgCond} as "createOrg"
+    const userRes = await client.query<User>(
+      `SELECT username, org, role
       FROM users
       WHERE username = $1`,
       [username]
     );
-    if (user.rowCount != 1) {
+    if (userRes.rowCount != 1) {
       throw new Error(`cannot find User ${username}`);
     }
+    const user = userRes.rows[0];
 
-    return user.rows[0];
+    const actionsQuery = await oso.actionsLocal(osoUser, {
+      type: "Organization",
+      id: user.org,
+    });
+
+    const orgActionsQuery = `
+    SELECT array_agg(actions) AS actions FROM (
+        ${actionsQuery}
+    ) AS actions`;
+
+    const res = await client.query<{ actions: string[] }>(orgActionsQuery);
+    const orgActions = res.rows[0].actions;
+
+    return {
+      ...user,
+      readOrg: orgActions.includes("read"),
+      createUser: orgActions.includes("create_user"),
+      createDoc: orgActions.includes("create_doc"),
+    };
   } catch (error) {
     console.error("Error in getUser:", error);
     throw error;
@@ -120,10 +100,11 @@ export interface ReadableUser {
  * to be filtered out before using the data.
  *
  * ## Oso documentation
- * Demonstrates an advanced form of local authorization, which relies on
- * evaluating many properties of a resource in a single query. This design
- * reduces the number of roundtrips to the database your application needs to
- * perform.
+ * Demonstrates an advanced form of local authorization, which:
+ * - Includes an `and` condition, which ensures that the requestor has the
+ *   `read` permission on all returned users.
+ * - Takes a query generated from local auth and performs aggregations and joins
+ *   on it.
  *
  * @throws {Error} If there is a problem with the database connection.
  */
@@ -133,59 +114,39 @@ export async function getReadableUsersWithPermissions(
   const osoUser = { type: "User", id: requestor };
   const client = await pool.connect();
   try {
-    // Determine the users for which this user has `read` permissions. This will
-    // form the base of which users this user might be able to manage.
-    //
-    // TODO: once local authorization has access to the query builder API, this
-    // can be simplified.
-    const readableUsersCond = await oso.listLocal(
-      osoUser,
-      "read",
-      "User",
-      "username"
+    const actionVar = typedVar("String");
+    const userVar = typedVar("User");
+    const usersActions = await oso
+      .buildQuery(["allow", osoUser, actionVar, userVar])
+      .and(["allow", osoUser, "read", userVar])
+      .evaluateLocalSelect({
+        actions: actionVar,
+        username: userVar,
+      });
+
+    const usersWActions = await client.query<{
+      username: string;
+      role: string;
+      org: string;
+      actions: string[];
+    }>(
+      `SELECT users.username, role, org, actions_per_user.actions
+      FROM (
+        -- Get all actions for each user
+        SELECT username, array_agg(actions) AS actions
+        FROM (
+          ${usersActions}
+        ) AS user_actions
+        GROUP BY user_actions.username
+      ) AS actions_per_user
+      JOIN users ON actions_per_user.username = users.username`
     );
 
-    // Determine the users for which this user has `edit_role` permissions.
-    //
-    // TODO: once local authorization has access to the query builder API, this
-    // can be simplified.
-    const editableRoleUsersCond = await oso.listLocal(
-      osoUser,
-      "edit_role",
-      "User",
-      "username"
-    );
-
-    // Determine the users for which this user has `delete` permissions.
-    //
-    // TODO: once local authorization has access to the query builder API, this
-    // can be simplified.
-    const deleteUsersCond = await oso.listLocal(
-      osoUser,
-      "delete",
-      "User",
-      "username"
-    );
-
-    // Determine all visible users (`readableUsersCond`), along with whether or
-    // not this user has `edit_role` (`editableRoleUsersCond`) or `delete`
-    // permissions (`deleteUsersCond`).
-    //
-    // We inline the `edit_role` and `delete` permissions queries in this query to
-    // make fewer calls to the database.
-    const usersWPermissionsRes = await client.query<ReadableUser>(
-      `SELECT
-        username,
-        org,
-        role,
-        ${editableRoleUsersCond} as "editRole",
-        ${deleteUsersCond} as "deleteUser"
-      FROM users
-      WHERE ${readableUsersCond}
-      ORDER BY username`
-    );
-    const users = usersWPermissionsRes.rows;
-    return users;
+    return usersWActions.rows.map((user) => ({
+      ...user,
+      editRole: user.actions.includes("edit_role"),
+      deleteUser: user.actions.includes("delete"),
+    }));
   } catch (error) {
     console.error("Error in getReadableUsersWithPermissions:", error);
     throw error;
@@ -203,6 +164,9 @@ export async function getReadableUsersWithPermissions(
  * ## Oso documentation
  * Demonstrates a standard authorized endpoint––ensuring the user has a specific
  * permission, and permitting it to occur only if they do.
+ *
+ * Also demonstrates using `batch` to synchronize changes to Oso's centralized
+ * authorization data.
  *
  * @throws {Error} If there is a problem with the database connection or
  * authorization fails.
@@ -243,6 +207,19 @@ export async function createUser(
       `INSERT INTO users (username, org, role) VALUES ($1, $2, $3::organization_role);`,
       [data.username, data.org, data.role]
     );
+
+    const user = {
+      type: "User",
+      id: data.username,
+    };
+
+    // Propagate user roles to Oso's centralized authorization data store for
+    // other services to use.
+    await oso.batch((tx) => {
+      tx.insert(["has_role", user, data.role, org]);
+      tx.insert(["has_relation", user, "parent", org]);
+    });
+
     return { success: true, value: data.username };
   } catch (error) {
     return { success: false, error: stringifyError(error) };
@@ -259,6 +236,9 @@ export async function createUser(
  * ## Oso documentation
  * Demonstrates a standard authorized endpoint––ensuring the user has a specific
  * permission, and permitting it to occur only if they do.
+ *
+ * Also demonstrates using `batch` to synchronize changes to Oso's centralized
+ * authorization data.
  *
  * @throws {Error} If there is a problem with the database connection or
  * authorization fails.
@@ -277,7 +257,31 @@ export async function deleteUser(
       throw new Error(`not permitted to delete User ${username}`);
     }
 
-    await client.query(`DELETE FROM users WHERE username = $1;`, [username]);
+    const res = await client.query<{ org: string; role: string }>(
+      `DELETE FROM users WHERE username = $1 RETURNING org, role;`,
+      [username]
+    );
+    if (res.rowCount !== 1) {
+      throw new Error(`cannot find user ${username}`);
+    }
+    const resReturnValues = res.rows[0];
+
+    const user = {
+      type: "User",
+      id: username,
+    };
+    const org = {
+      type: "Organization",
+      id: resReturnValues.org,
+    };
+
+    // Propagate user roles to Oso's centralized authorization data store for
+    // other services to use.
+    await oso.batch((tx) => {
+      tx.delete(["has_role", user, resReturnValues.role, org]);
+      tx.delete(["has_relation", user, "parent", org]);
+    });
+
     return;
   } catch (error) {
     console.error("Error in deleteUser:", error);
@@ -296,6 +300,9 @@ export async function deleteUser(
  * Demonstrates a complex approach to authorizing many resources at once using
  * local authorization, relying on a transaction to verify authorization
  * occurred as the requestor expected.
+ *
+ * Also demonstrates using `batch` to synchronize changes to Oso's centralized
+ * authorization data.
  *
  * @throws {Error} If there is a problem with the database connection, or the
  * requestor cannot does not have permission to edit all requested users.
@@ -327,7 +334,8 @@ export async function editUsersRoleByUsername(
         FROM (VALUES 
           ${updates.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(", ")}
         ) AS v(username, role)
-        WHERE users.username = v.username AND ${editRoleAuthorized};
+        WHERE users.username = v.username AND ${editRoleAuthorized}
+        RETURNING users.username, users.org, users.role;
       `;
 
     const userFields: string[] = updates.flatMap((user) => [
@@ -336,19 +344,42 @@ export async function editUsersRoleByUsername(
     ]);
 
     await client.query("BEGIN");
-    const r = await client.query(queryText, userFields);
+    const res = await client.query<User>(queryText, userFields);
 
     // Check the affected row count, which is our signal that there is a
     // discrepancy between the number of users submitted and the number of users
     // that passed the condition expressed by `editRoleAuthorized`.
-    if (r.rowCount !== updates.length) {
+    if (res.rowCount !== updates.length) {
       // If these numbers do not align, abort the operation.
       throw new Error(`not permitted to edit role of all submitted users`);
-    } else {
-      // If these numbers aligned things are good.
-      client.query("COMMIT");
-      return;
     }
+    // If these numbers aligned things are good.
+    client.query("COMMIT");
+
+    // Synchronize user's new role to Oso's centralized authorization data for
+    // use in other services.
+    await oso.batch((tx) => {
+      // Insert new values.
+      updates.map((user) =>
+        tx.insert([
+          "has_role",
+          { type: "User", id: user.username },
+          user.role,
+          { type: "Organization", id: user.org },
+        ])
+      );
+      // Delete current values.
+      res.rows.map((user) => {
+        tx.delete([
+          "has_role",
+          { type: "User", id: user.username },
+          user.role,
+          { type: "Organization", id: user.org },
+        ]);
+      });
+    });
+
+    return;
   } catch (error) {
     client.query("ROLLBACK");
     console.error("Error in editUsersRoleByUsername:", error);

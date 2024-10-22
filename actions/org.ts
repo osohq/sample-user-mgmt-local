@@ -6,30 +6,37 @@ import { Org, Role } from "@/lib/relations";
 import { Result, stringifyError } from "@/lib/result";
 
 /**
- * Determine if the requestor has the privilege to create organizations.
- *
- * This function checks whether a given user (`requestor`) has the necessary
- * authorization to create an organization, which can be useful for
- * conditionally rendering UI components based on user permissions.
+ * Checks whether `requestor` has the necessary authorization to create an
+ * organization, which can be useful for conditionally rendering UI components
+ * based on user permissions.
  *
  * ## Oso documentation
- * This function demonstrates a preemptive check appropriate for determining if
- * a component should render or not.
+ * This function demonstrates how to check for a global permission.
  *
  * @throws {Error} If there is a problem with the database connection.
  */
 export async function canCreateOrg(requestor: string): Promise<boolean> {
   const client = await pool.connect();
   try {
-    const auth = await authorizeUser(oso, client, requestor, "create", {
-      type: "Organization",
-      // Ensure user has `create` privilege on an arbitrary, non-existent
-      // organization. This API will be more ergonomic once local authorization
-      // has the query builder API.
-      id: "",
-    });
+    // `create_org` is a global permission, so we have to check it with
+    // `has_permission` rather than the more idiomatic `allow`. Note that the
+    // query does not have a third element––this is the idiom to check for
+    // global permissions.
+    const createOrgQuery = await oso
+      .buildQuery([
+        "has_permission",
+        { type: "User", id: requestor },
+        "create_org",
+      ])
+      .evaluateLocalSelect();
 
-    return auth;
+    const auth = await client.query<{ result: boolean }>(createOrgQuery);
+
+    if (auth.rowCount !== 1) {
+      throw new Error(`cannot determine if ${requestor} can create orgs`);
+    }
+
+    return auth.rows[0].result;
   } catch (error) {
     console.error("Error in canCreateOrg:", error);
     throw error;
@@ -41,14 +48,13 @@ export async function canCreateOrg(requestor: string): Promise<boolean> {
 /**
  * Create a new organization.
  *
- * Requires that the user has the `create` permission on the organization. Once
- * the Oso Node SDK supports the query builder API, this will become a check
- * that the user has a global permission to create organizations.
+ * Requires that the user has the `create_org` `global` permission.
  *
  * ## Oso documentation
  * This function demonstrates a standard write path––determining the user has
  * permission to write the data, and permitting the write to occur only if they
- * do.
+ * do. However, unlike many standard write paths, this function relies on a
+ * `global` permission.
  */
 export async function createOrg(
   // Bound parameter because `createUser` is used as a form action.
@@ -62,10 +68,7 @@ export async function createOrg(
 
   const client = await pool.connect();
   try {
-    const auth = await authorizeUser(oso, client, p.requestor, "create", {
-      type: "Organization",
-      id: data.name,
-    });
+    const auth = await canCreateOrg(p.requestor);
     if (!auth) {
       throw new Error(`not permitted to create Organization ${data.name}`);
     }

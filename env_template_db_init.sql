@@ -3,8 +3,8 @@
 -- physical services).
 CREATE DATABASE users;
 
--- substitutions occur in env_template_init.sh; if not using the orchestrated
--- DB, you can skip this section.
+-- substitutions occur in env_template_init.sh; if not using the orchestrated DB,
+-- you can skip this section.
 GRANT ALL PRIVILEGES ON DATABASE users TO ${DB_USER};
 
 \connect users;

@@ -77,11 +77,6 @@ export default async function UserPage({ params }: UserProps) {
                     </td>
                   </tr>
                   <tr>
-                    <td>Create org</td>
-                    <td>{user.createOrg.toString()}</td>
-                    <td>Create new organizations.</td>
-                  </tr>
-                  <tr>
                     <td>Create user</td>
                     <td>{user.createUser.toString()}</td>
                     <td>Create new users.</td>
