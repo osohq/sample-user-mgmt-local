@@ -332,7 +332,7 @@ export async function editUsersRoleByUsername(
     const queryText = `
         UPDATE users
         SET role = v.role::organization_role
-        FROM (VALUES 
+        FROM (VALUES
           ${updates.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(", ")}
         ) AS v(username, role)
         WHERE users.username = v.username AND ${editRoleAuthorized}
@@ -412,7 +412,7 @@ export async function getOrgUsers(
 
     // Determine the users for which this user has `read` permissions in the
     // specified `org`.
-    const readableUsersCond = oso
+    const readableUsersCond = await oso
       .buildQuery(["allow", osoUser, "read", userVar])
       .and(["has_relation", userVar, "parent", osoOrg])
       .evaluateLocalFilter("username", userVar);
@@ -421,8 +421,7 @@ export async function getOrgUsers(
       `SELECT username, org, role
         FROM users
         WHERE ${readableUsersCond}
-        ORDER BY username`,
-      [org]
+        ORDER BY username`
     );
 
     return orgUsers.rows;
