@@ -17,6 +17,8 @@ export const osoUserMgmt = new Oso(osoHost, key, {
  * Convenience function to authorizes `user` to perform `permission` on
  * `resource` using local authorization.
  *
+ * `resource` can be `null` when checking `global` permissions.
+ *
  * ## Oso documentation
  * Demonstrates the most standard use of local authorization in which Oso
  * provides the full query to execute to determine authorization.
@@ -28,16 +30,32 @@ export async function authorizeUser(
   client: PoolClient,
   username: string,
   permission: string,
-  resource: IntoValue<Value>
+  resource?: IntoValue<Value>
 ): Promise<boolean> {
   const osoUser = { type: "User", id: username };
 
+  const args = resource
+    ? // standard resource check
+      (["allow", osoUser, permission, resource] as [
+        string,
+        Value,
+        IntoValue<Value>,
+        Value
+      ])
+    : // global permission check
+      (["has_permission", osoUser, permission] as [
+        string,
+        Value,
+        IntoValue<Value>
+      ]);
+
   try {
-    const authQuery = await oso.authorizeLocal(osoUser, permission, resource);
-    const r = await client.query<{ allowed: boolean }>(authQuery);
-    const allowed = r.rows[0].allowed;
+    const authQuery = await oso.buildQuery(args).evaluateLocalSelect();
+    const r = await client.query<{ result: boolean }>(authQuery);
+    const allowed = r.rows[0].result;
     return allowed;
   } catch (err) {
+    console.error("Error in authorizeUser:", err);
     throw err;
   }
 }
