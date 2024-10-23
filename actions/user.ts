@@ -118,6 +118,7 @@ export async function getReadableUsersWithPermissions(
     const userVar = typedVar("User");
     const usersActions = await oso
       .buildQuery(["allow", osoUser, actionVar, userVar])
+      // `requestor` must have `read` permission on all users.
       .and(["allow", osoUser, "read", userVar])
       .evaluateLocalSelect({
         actions: actionVar,
@@ -403,21 +404,23 @@ export async function getOrgUsers(
   requestor: string,
   org: string
 ): Promise<User[]> {
-  const osoUser = { type: "User", id: requestor };
   const client = await pool.connect();
   try {
-    // Determine the users for which this user has `read` permissions.
-    const readableUsersCond = await oso.listLocal(
-      osoUser,
-      "read",
-      "User",
-      "username"
-    );
+    const osoUser = { type: "User", id: requestor };
+    const userVar = typedVar("User");
+    const osoOrg = { type: "Organization", id: org };
+
+    // Determine the users for which this user has `read` permissions in the
+    // specified `org`.
+    const readableUsersCond = oso
+      .buildQuery(["allow", osoUser, "read", userVar])
+      .and(["has_relation", userVar, "parent", osoOrg])
+      .evaluateLocalFilter("username", userVar);
 
     const orgUsers = await client.query<User>(
       `SELECT username, org, role
         FROM users
-        WHERE org = $1 AND ${readableUsersCond}
+        WHERE ${readableUsersCond}
         ORDER BY username`,
       [org]
     );

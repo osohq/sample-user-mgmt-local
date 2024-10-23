@@ -18,25 +18,7 @@ import { Result, stringifyError } from "@/lib/result";
 export async function canCreateOrg(requestor: string): Promise<boolean> {
   const client = await pool.connect();
   try {
-    // `create_org` is a global permission, so we have to check it with
-    // `has_permission` rather than the more idiomatic `allow`. Note that the
-    // query does not have a third element––this is the idiom to check for
-    // global permissions.
-    const createOrgQuery = await oso
-      .buildQuery([
-        "has_permission",
-        { type: "User", id: requestor },
-        "create_org",
-      ])
-      .evaluateLocalSelect();
-
-    const auth = await client.query<{ result: boolean }>(createOrgQuery);
-
-    if (auth.rowCount !== 1) {
-      throw new Error(`cannot determine if ${requestor} can create orgs`);
-    }
-
-    return auth.rows[0].result;
+    return await authorizeUser(oso, client, requestor, "create_org");
   } catch (error) {
     console.error("Error in canCreateOrg:", error);
     throw error;
@@ -68,7 +50,12 @@ export async function createOrg(
 
   const client = await pool.connect();
   try {
-    const auth = await canCreateOrg(p.requestor);
+    const auth = await await authorizeUser(
+      oso,
+      client,
+      p.requestor,
+      "create_org"
+    );
     if (!auth) {
       throw new Error(`not permitted to create Organization ${data.name}`);
     }
@@ -131,41 +118,4 @@ export async function getOrgRoles(): Promise<Role[]> {
     pool,
     `SELECT DISTINCT unnest(enum_range(NULL::organization_role)) AS name`
   );
-}
-
-/**
- * Return the name of the organization that a user belongs to.
- *
- * @throws {Error} If there is a problem with the database connection or there
- * are no users with the specified username.
- */
-export async function getUserOrg(
-  requestor: string,
-  username: string
-): Promise<string> {
-  const client = await pool.connect();
-  try {
-    const auth = await authorizeUser(oso, client, requestor, "read", {
-      type: "User",
-      id: username,
-    });
-    if (!auth) {
-      throw new Error(`not permitted to read User ${username}`);
-    }
-
-    const users = await client.query<{ org: string }>(
-      `SELECT org FROM users WHERE username = $1;`,
-      [username]
-    );
-    const rows = users.rows;
-    if (rows.length != 1) {
-      throw new Error(`cannot find user ${username}`);
-    }
-    return rows[0].org;
-  } catch (error) {
-    console.error("Error in getUserOrg:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
 }
