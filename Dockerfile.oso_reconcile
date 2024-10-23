@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y gettext-base
 
 # Copy the .env file, the template SQL file, and the script to the container
 COPY .env .
+# This file describes facts that should be synchronized with Oso in terms of
+# the database's schema.
 COPY env_template_oso_sync.yml .
 COPY env_template_init.sh .
 

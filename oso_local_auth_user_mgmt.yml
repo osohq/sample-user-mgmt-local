@@ -31,7 +31,6 @@ sql_types:
   Organization: TEXT
 # For more details about how this interacts with other components of the system,
 # see:
-# - db_init_template.sql for the application's SQL schema
-# - oso_local_auth_*.yml for service's local authorization config
-# - (unused) env_template_oso_sync.yml for the sync/reconcile tool config
+# - env_template_db_init.sql for the application's SQL schema
+# - oso_local_auth_*.yml for services' local authorization config
 # - oso_policy.polar for this application's Polar policy, for use in Oso Cloud
