@@ -2,7 +2,8 @@
 
 This application provides a reference for using Oso Cloud's [local
 authorization](https://www.osohq.com/docs/reference/authorization-data/local-authorization)
-to create a multi-tenant document sharing application.
+to create a multi-tenant document sharing application with a microservice
+architecture.
 
 ## App UX
 
@@ -17,24 +18,38 @@ assigning them specific roles on the shared files. The only editable field of
 the documents are their titles, though other capabilities are more
 full-featured.
 
+## Technologies
+
+- Oso Cloud w/ both
+  [centralized](https://www.osohq.com/docs/authorization-data/centralized) and
+  [local
+  authorization](https://www.osohq.com/docs/reference/authorization-data/local-authorization)
+- Docker Compose
+- Next.js with React server components for the backend
+- PostgreSQL
+
 ## Reference files
 
-This app's primary purposes are providing reference and documentation for using
-Oso's local authorization.
+The project contains many reference files, which provide realistic examples of
+how to accomplish complex tasks in your own application.
 
-While any part of the code might be instructive, the primary set of
-documentation includes:
+| File                  | Description                                                                                                                                                                                          |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `oso_policy.polar`    | A complex policy demonstrating RBAC, ReBAC, and ABAC                                                                                                                                                 |
+| `oso_local_auth*.yml` | Per-serivce [local auth configuration](https://www.osohq.com/docs/authorization-data/local-authorization#config)                                                                                     |
+| `actions/*.ts`        | [Node.js SDK](https://www.osohq.com/docs/app-integration/client-apis/node) authorization enforcement w/ React server components. For more details, see [Enforcement patterns](#enforcement-patterns) |
+| `app/**/*.tsx`        | React frontend integrating with authorization-oriented backend                                                                                                                                       |
+| `lib/oso.ts`          | Oso client generation/config                                                                                                                                                                         |
 
-- Configuration to set up local authorization within an application
-- Integration of local authorization within the API
+### Enforcement patterns
 
 Different components offer different examples of authorization patterns:
 
-| Component      | Pattern                                                                             |
-| -------------- | ----------------------------------------------------------------------------------- |
-| `Organization` | RBAC: [multi-tenancy], [global roles]                                               |
-| `User`         | ReBAC: [user-resource relations]                                                    |
-| `Document`     | RBAC: [resource roles], ReBAC: [user-resource relations], ABAC: [private resources] |
+| Component                      | File                                      | Pattern                                                                             |
+| ------------------------------ | ----------------------------------------- | ----------------------------------------------------------------------------------- |
+| `Organization`s (tenants)      | `/actions/org.ts`                         | RBAC: [multi-tenancy], [global roles]                                               |
+| `Users` within `Organization`s | `/actions/user.ts`                        | ReBAC: [user-resource relations]                                                    |
+| `Document`s                    | `/actions/doc.ts`, `actions/doc_perms.ts` | RBAC: [resource roles], ReBAC: [user-resource relations], ABAC: [private resources] |
 
 [global roles]: https://www.osohq.com/docs/guides/role-based-access-control-rbac/globalroles
 [multi-tenancy]: https://www.osohq.com/docs/guides/role-based-access-control-rbac/roles
@@ -42,49 +57,84 @@ Different components offer different examples of authorization patterns:
 [resource roles]: https://www.osohq.com/docs/guides/role-based-access-control-rbac/resourcespecific
 [user-resource relations]: https://www.osohq.com/docs/guides/relationship-based-access-control-rebac/ownership
 
-To get a holistic sense of using these authorization paradigms, look at both the
-configuration and integration files.
+### Centralized authz data reconciliation
 
-### Configuration
+To manage authorization data, Oso offers a service to [sync data to Oso's
+centralized authorization
+data](https://www.osohq.com/docs/authorization-data/centralized/manage-centralized-authz-data/sync-data#sync-facts-in-production).
+However, the syncing service is only available to [customers at the Growth tier
+or above](https://www.osohq.com/pricing).
 
-Configuring your app to use Oso Cloud's local authorization is demonstrated
-across a few files:
+We've included details for using the sync service for documentation purposes,
+but commented out places where it would run.
 
-| File                   | Use                                                               |
-| ---------------------- | ----------------------------------------------------------------- |
-| `db_init_template.sql` | The application's database schema                                 |
-| `oso-policy.polar`     | The authorization policy for this application                     |
-| `oso-local-auth.yaml`  | Configuration correlating your policy and your application's data |
+- `env_template_oso_sync.yml`
+- `Dockerfile.oso_reconcile`
+- `docker-compose.yml`
 
-While there is a lot of inline documentation, you can find more documentation in
-[Oso Cloud's Local Authorization
-docs](https://www.osohq.com/docs/reference/authorization-data/local-authorization).
+## App architecture
 
-### Integration
+The physical application that gets built via Docker compose is:
 
-This application's "backend" API implementation provides reference for
-integrating local auth with TypeScript.
-
-| File               | API for...                     |
-| ------------------ | ------------------------------ |
-| `/actions/org.ts`  | `Organization`s (tenants)      |
-| `/actions/user.ts` | `Users` within `Organization`s |
-| `/actions/doc.ts`  | `Document`s                    |
-
-This code currently uses React server components for the API. Even if you do not
-use React server components in your application, the examples are easily
-adaptable to any API structure––all of the patterns are amenable to any endpoint
-implementation.
-
-## Architecture
-
-- Oso local auth for all authorization requests
-- NextJS with app routers for the back end
-  - Automatic reload on changes
+- Next.js with React server components for the backend
 - PostgreSQL
-  - Initialized with `db_init_template.sql`, which can reference `.env`
-    variables.
-- Docker w/ compose to build and run both components
+
+The React server components that constitute the backend authorize requests using
+Oso Cloud using [local
+authorization](https://www.osohq.com/docs/reference/authorization-data/local-authorization).
+
+However, the **logical** application that gets built mimics a microservice
+architecture, primarily enforced by creating distinct databases for each
+service. In the case of this application, the two services are:
+
+- User management, which creates organizations and users
+- Documents, which lets users create and share documents
+
+The backend, though physically unified, behaves as if it is not and uses
+separate clients to connect to both the PG database and Oso Cloud.
+
+In this diagram, the lines connecting the backend services represent distinct
+clients.
+
+```
+                 next.js
+ ┌────────────────┬───────────────────┐
+ │    frontend    │       backend     │      PG DB
+ │                │┌─────────┐        │   ┌─────────┐
+ │                ││         │        │   │         │
+ │                ││  /users ┼────────┼───►   Users │
+ │                │└──▲──────┘        │   ├─────────┤
+ │                │   │┌─────────┐    │   │         │
+ │                │   ││         │    │ ┌─►    Docs │
+ │                │   ││   /docs ┼────┼─┘ └─────────┘
+ │                │   │└────────▲┘    │
+ └────────────────┴───┼─────────┼─────┘
+                      │         │
+                     ┌▼─────────▼──┐
+                     │             │
+                     │  Oso Cloud  │
+                     │             │
+                     │             │
+                     └─────────────┘
+```
+
+### Microservices + local authorization
+
+With a microservice architecture like the one laid out above, services do not
+have access to each others' data. This means that even though authorization
+decisions made in many services will depend on the `/users` service, they cannot
+access it directly.
+
+To handle this complexity, Oso offers [centralized authorization
+data](https://www.osohq.com/docs/authorization-data/centralized). In this
+application, it means that as the `/users` service performs CRUD operations on
+its database, it also needs to propagate those changes to Oso Cloud. This way,
+when the `/docs` service needs to enforce authorization, it can do so with the
+copy of the `/users` data that Oso Cloud has.
+
+Further, because Oso's local authorization considers centralized authorization
+data when generating SQL expressions, the `/docs` service can still use local
+authorization.
 
 ## Running the app
 
@@ -119,12 +169,6 @@ From here you can create and manage:
 - `User`s
 - `Document`s
 
-### Using your own database
-
-You can configure the application to use your own database by point to it using
-your `.env` file. You will want to ensure you also populate the database using
-the contents of `db_init_template.sql`.
-
 ## Demonstrating the app
 
 The application is meant to provided a means of creating tenants (Organizations)
@@ -135,19 +179,27 @@ Going through these steps will demonstrate to you a number of its features.
 1. Go to <http://localhost:3000/user/root>.
 1. In **Create orgs**, enter `acme` and click **Add org**. You can now create
    users in a separate tenant.
-1. In **Create users**, create a user named `alice` in the `acme` organization with the `admin` role, and then click **Add user**.
-1. Click the link for `alice`, or go to
-   <http://localhost:3000/user/alice>.
+1. In **Create users**, create a user named `alice` in the `acme` organization
+   with the `admin` role, and then click **Add user**.
+1. Click the link for `alice`, or go to <http://localhost:3000/user/alice>.
 1. Because `alice` is an admin, you will be able to create other users in the
    `acme` organization here. Do that, creating a user `bob` who is a `member`.
 1. In the **alice Docs** section, click **Create doc**, and name it `private`.
-1. On the page that loads (which should be <http://localhost:3000/user/root/docs/1>), in the **Shareable** section, make `bob` and `editor`.
-1. Click `< Home` in the upper-left-hand corner, and then create another document called `public`.
-1. On the page that loads (which should be <http://localhost:3000/user/root/docs/2>), click **Set public**.
-1. Click `< Home` and then click the [`bob`](http://localhost:3000/user/bob) link.
+1. On the page that loads (which should be
+   <http://localhost:3000/user/root/docs/1>), in the **Shareable** section, make
+   `bob` and `editor`.
+1. Click `< Home` in the upper-left-hand corner, and then create another
+   document called `public`.
+1. On the page that loads (which should be
+   <http://localhost:3000/user/root/docs/2>), click **Set public**.
+1. Click `< Home` and then click the [`bob`](http://localhost:3000/user/bob)
+   link.
 1. In the **bob Docs** section, you should see the following docs:
-   - `private` because `alice` explicitly shared the document with `bob`. If you visit the document, you can change its title, which will be visible to all users who can see it.
-   - `public` because `alice` and `bob` are both members of the same organization (`acme`) and the doc is public.
+   - `private` because `alice` explicitly shared the document with `bob`. If you
+     visit the document, you can change its title, which will be visible to all
+     users who can see it.
+   - `public` because `alice` and `bob` are both members of the same
+     organization (`acme`) and the doc is public.
 
 To understand why and how this all works, you'll need to read the code!
 
@@ -156,6 +208,3 @@ To understand why and how this all works, you'll need to read the code!
 ### Styling
 
 TODO: Add a style to the app. Currently, the GUI is entirely unstyled HTML.
-
-I left all of the `tailwind` boilerplate in here because it seemed obnoxious to
-remove it and try to re-add it.
