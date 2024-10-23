@@ -5,14 +5,14 @@ import { useFormState } from "react-dom";
 
 import { SubmitButton } from "@/lib/components";
 import { Role, DocumentUserRole, User } from "@/lib/relations";
+import { getDocumentOrg } from "@/actions/doc";
 import {
-  updateDocUserRole,
+  assignDocUserRoleForm,
   deleteDocUserRole,
   getAssignableDocRoles,
-  getDocumentOrg,
   getDocUserRoles,
-  assignDocUserRole,
-} from "@/actions/doc";
+  updateDocUserRole,
+} from "@/actions/doc_perms";
 import { getOrgUsers } from "@/actions/user";
 import { stringifyError } from "@/lib/result";
 import Link from "next/link";
@@ -160,7 +160,7 @@ const DocumentShareManager: React.FC<DocumentShareManagerProps> = ({
 
   // We need to provide the username of the user creating the new user to ensure
   // they're permitted to do so.
-  const assignDocUserRoleWRequestor = assignDocUserRole.bind(null, {
+  const assignDocUserRoleWRequestor = assignDocUserRoleForm.bind(null, {
     requestor: username,
     id,
   });

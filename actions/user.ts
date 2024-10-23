@@ -384,7 +384,6 @@ export async function editUsersRoleByUsername(
   } catch (error) {
     client.query("ROLLBACK");
     console.error("Error in editUsersRoleByUsername:", error);
-    client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();

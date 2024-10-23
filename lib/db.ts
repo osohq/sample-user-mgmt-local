@@ -32,6 +32,7 @@ export function newPool(database: string): Pool {
  * DB client for user management service.
  */
 export const usersPool = newPool("users");
+export const docsPool = newPool("documents");
 
 // Function to execute a query with parameters
 export async function query<T>(
