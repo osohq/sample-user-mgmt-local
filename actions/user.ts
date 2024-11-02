@@ -14,7 +14,7 @@ import { Result, stringifyError } from "@/lib/result";
 export interface UserWOrgPermissions extends User {
   readOrg: boolean;
   createUser: boolean;
-  // Base permissions on specialized app go here.
+  scheduleAppointment: boolean;
 }
 
 /**
@@ -59,12 +59,17 @@ export async function getUserWOrgPermissions(
     ) AS actions`;
 
     const res = await client.query<{ actions: string[] }>(orgActionsQuery);
-    const orgActions = res.rows[0].actions;
+
+    let orgActions = res.rows[0].actions;
+    if (!orgActions) {
+      orgActions = [];
+    }
 
     return {
       ...user,
       readOrg: orgActions.includes("read"),
       createUser: orgActions.includes("create_user"),
+      scheduleAppointment: orgActions.includes("schedule_appointment"),
     };
   } catch (error) {
     console.error("Error in getUser:", error);

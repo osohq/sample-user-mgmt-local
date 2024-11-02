@@ -10,7 +10,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "${DB_USER}"]
       interval: 1s
@@ -22,18 +22,18 @@ services:
   # https://www.osohq.com/docs/authorization-data/centralized/manage-centralized-authz-data/sync-data#sync-facts-in-production
   # The reconcile feature is not meant to be used with Oso developer accounts,
   # so is commented out.
-  # oso_reconcile:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.oso_reconcile
-  #   platform: linux/arm64
-  #   container_name: oso_reconcile
-  #   environment:
-  #     - OSO_AUTH=${OSO_CLOUD_API_KEY}
-  #     - OSO_URL=${OSO_URL}
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
+  oso_reconcile:
+    build:
+      context: .
+      dockerfile: Dockerfile.oso_reconcile
+    platform: linux/arm64
+    container_name: oso_reconcile
+    environment:
+      - OSO_AUTH=${OSO_CLOUD_API_KEY}
+      - OSO_URL=${OSO_URL}
+    depends_on:
+      db:
+        condition: service_healthy
 
   app:
     container_name: app
@@ -52,9 +52,9 @@ services:
     ports:
       - 3000:3000
     depends_on:
-      db:
-        condition: service_healthy
-      # - oso_reconcile
+      # db:
+      #   condition: service_healthy
+      - oso_reconcile
 
 volumes:
   pgdata:

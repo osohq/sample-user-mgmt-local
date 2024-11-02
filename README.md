@@ -1,164 +1,222 @@
-This code provides a base from which other sample apps should be built.
-Primarily, this code includes a NextJs app w/ a PostgreSQL backend, orchestrated
-through Docker compose.
+# Oso Cloud electronic medical record (EMR) example application
 
-Feature-wise, this code provides a "boilerplate" multi-tenant user management
-system, which allows:
+This application provides a reference for using Oso Cloud's [local
+authorization](https://www.osohq.com/docs/reference/authorization-data/local-authorization)
+to create a multi-tenant electronic medical record (EMR) application with a
+microservice architecture.
 
-- Creating new tenants (`Organization`s)
-- Creating and deleting users in those tenants
-- Assigning users' roles within a tenant
-- "Impersonating" a user to view the app as the specified user
+## App UX
 
-Additional apps should retain this feature––either displaying it alongside the
-details of the new app, or allowing users to toggle it open via tabs.
+The application includes a multi-tenant-enabled user management system, which
+lets you create organizations (tenants), as well as users within those tenants
+with specific roles. When running the app, you have a super-admin like
+impersonation privilege that lets you view the application state as any given
+user.
 
-# Developing + deployment
+### EMR model
 
-This repo is meant to be the "home base" for this set of sample apps to ensure
-that they all easily retain a consistent base. Each additional sample app should
-be managed as a branch of this repo.
+The main purpose of the application is to demonstrate Oso's ability to handle
+electronic medical records.
 
-| App                                                                   | Branch       |
-| --------------------------------------------------------------------- | ------------ |
-| [File sharing](https://github.com/osohq/sample-file-share-local-node) | `drive-like` |
+#### Objects
 
-When making changes to the full-fledged sample apps, you can push to their repo
-using the appropriate branch, e.g. to push changes on `drive-like` to the file
-sharing app repo:
+The EMR application focuses on two objects:
 
-```
-git push git@github.com:osohq/sample-file-share-local-node.git +drive-like:main
-```
+- Appointments between medical staff and patients
+- Records created as a result of those appointments. Records have two
+  components:
+  - Public notes meant to be widely visible
+  - Internal notes meant only for other medical staff
 
-# Documentation + Examples
+#### Roles
 
-This app's primary purposes are providing reference and documentation for using
-Oso's local authorization. It is not meant to be a full-fledged sample
-application that demonstrates how to use React or Typescript in general (though
-using SDK features is great).
+Electronic medical records are notoriously complex, which the application model
+mirrors. To help develop a sense of what the application does, we'll focus on
+which roles a user can have on an organization and what that entitles them to
+do.
 
-# User management "component"
+##### `admin`
 
-This application provides a user management system from which other sample apps
-can be built––e.g. file sharing application––including a GUI.
+The `root` user that you can access when you launch the app is a special global
+`admin` user that can create organizations, as well as other read-oriented
+capabilities. In this application, only the `root` user in the `_root`
+organization is an `admin`.
 
-This is necessary to do first because all other sample apps will be simpler to
-demo if you're able to easily see the impact that authorization has on different
-users' access to resources. For instance, if you share a file with another user,
-it's powerful to demonstrate that user can now access the file with the
-permissions you identified.
+##### `administrative_staff`
 
-## Architecture
+- Create users within their organization
+- Schedule appointments
+- View all appointments
+- Cancel appointments
+- View the public notes of any record within their organization
 
-- NextJS with app routers for the back end
-  - Automatic reload on changes
+##### `patient`
+
+- View any appointments for which they are the patient
+- View the public notes of any record originating from an appointment for
+  which they are the patient
+
+##### `medical_staff`
+
+- View all appointments
+- Complete appointments for which they are the medical staff
+- Create records for appointments for which they are the medical staff
+- View the public notes of any record within their organization
+- View the **internal** notes of any record:
+  - Originating from an appointment for which they are the medical staff
+  - For any appointment whose patient has an appointment with this user, as
+    long as that state is not `canceled`.
+
+## Technologies
+
+- Oso Cloud w/ both
+  [centralized](https://www.osohq.com/docs/authorization-data/centralized) and
+  [local
+  authorization](https://www.osohq.com/docs/reference/authorization-data/local-authorization)
+- Docker Compose
+- Next.js with React server components for the backend
 - PostgreSQL
-  - Initialized with `db_init_template.sql`, which can reference `.env`
-    variables.
-- Docker w/ compose to build and run both components
 
-## Oso integration
+## Reference files
 
-- Uses local auth exclusively
+The project contains many reference files, which provide realistic examples of
+how to accomplish complex tasks in your own application.
 
-## Expected UX
+| File                  | Description                                                                                                                                                                                          |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `oso_policy.polar`    | A complex policy demonstrating RBAC, ReBAC, ABAC, and field-level access                                                                                                                             |
+| `oso_local_auth*.yml` | Per-serivce [local auth configuration](https://www.osohq.com/docs/authorization-data/local-authorization#config)                                                                                     |
+| `actions/*.ts`        | [Node.js SDK](https://www.osohq.com/docs/app-integration/client-apis/node) authorization enforcement w/ React server components. For more details, see [Enforcement patterns](#enforcement-patterns) |
+| `app/**/*.tsx`        | React frontend integrating with authorization-oriented backend                                                                                                                                       |
+| `lib/oso.ts`          | Oso client generation/config                                                                                                                                                                         |
 
-1. Add `/oso-policy.polar` as the policy in the environment.
-1. Convert `.env.example` to `.env` with the appropriate values set, i.e. adding
-   your API key.
+### Enforcement patterns
+
+Different components offer different examples of authorization patterns:
+
+| Component                    | File               | Pattern                                         |
+| ---------------------------- | ------------------ | ----------------------------------------------- |
+| `Organization` (tenants)     | `/actions/org.ts`  | RBAC: [multi-tenancy], [global roles]           |
+| `User` within `Organization` | `/actions/user.ts` | ReBAC: [user-resource relations]                |
+| `Appointment`, `Record`      | `/actions/emr.ts`  | ReBAC: [user-resource relations], [Field-level] |
+
+[global roles]: https://www.osohq.com/docs/guides/role-based-access-control-rbac/globalroles
+[multi-tenancy]: https://www.osohq.com/docs/guides/role-based-access-control-rbac/roles
+[private resources]: https://www.osohq.com/docs/guides/attribute-based-access-control-abac/public
+[resource roles]: https://www.osohq.com/docs/guides/role-based-access-control-rbac/resourcespecific
+[user-resource relations]: https://www.osohq.com/docs/guides/relationship-based-access-control-rebac/ownership
+[Field-level]: https://www.osohq.com/docs/modeling-in-polar/field-level-authorization/fields-in-permissions
+
+### Centralized authz data reconciliation
+
+To manage authorization data, Oso offers a service to [sync data to Oso's
+centralized authorization
+data](https://www.osohq.com/docs/authorization-data/centralized/manage-centralized-authz-data/sync-data#sync-facts-in-production).
+However, the syncing service is only available to [customers at the Growth tier
+or above](https://www.osohq.com/pricing).
+
+We've included details for using the sync service for documentation purposes,
+but commented out places where it would run.
+
+- `env_template_oso_sync.yml`
+- `Dockerfile.oso_reconcile`
+- `docker-compose.yml`
+
+## App architecture
+
+The physical application that gets built via Docker compose is:
+
+- Next.js with React server components for the backend
+- PostgreSQL
+
+The React server components that constitute the backend authorize requests using
+Oso Cloud using [local
+authorization](https://www.osohq.com/docs/reference/authorization-data/local-authorization).
+
+However, the **logical** application that gets built mimics a microservice
+architecture, primarily enforced by creating distinct databases for each
+service. In the case of this application, the two services are:
+
+- User management, which creates organizations and users
+- EMR, which lets users mange appointments and records
+
+The backend, though physically unified, behaves as if it is not and uses
+separate clients to connect to both the PG database and Oso Cloud.
+
+In this diagram, the lines connecting the backend services represent distinct
+clients.
+
+```
+                 next.js
+ ┌────────────────┬───────────────────┐
+ │    frontend    │       backend     │      PG DB
+ │                │┌─────────┐        │   ┌─────────┐
+ │                ││  /users ┼────────┼───►   Users │
+ │                │└──▲──────┘        │   │         │
+ │                │   │┌─────────┐    │   ├─────────┤
+ │                │   ││    /emr ┼────┼───►     EMR │
+ │                │   │└────────▲┘    │   └─────────┘
+ └────────────────┴───┼─────────┼─────┘
+                      │         │
+                     ┌▼─────────▼──┐
+                     │  Oso Cloud  │
+                     └─────────────┘
+```
+
+### Microservices + local authorization
+
+With a microservice architecture like the one laid out above, services do not
+have access to each others' data. This means that even though authorization
+decisions made in many services will depend on the `/users` service, they cannot
+access it directly.
+
+To handle this complexity, Oso offers [centralized authorization
+data](https://www.osohq.com/docs/authorization-data/centralized). In this
+application, it means that as the `/users` service performs CRUD operations on
+its database, it also needs to propagate those changes to Oso Cloud. This way,
+when the `/emr` service needs to enforce authorization, it can do so with the
+copy of the `/users` data that Oso Cloud has.
+
+Further, because Oso's local authorization considers centralized authorization
+data when generating SQL expressions, the `/emr` service can still use local
+authorization.
+
+## Running the app
+
+1. [Log in to or create an Oso Cloud account](https://ui.osohq.com/).
+1. [Create an API key for the
+   application](https://www.osohq.com/docs/guides/production/manage-organization-settings#create-new-api-keys).
+   Make sure you save this!
+1. Copy `/oso-policy.polar` as the policy in the environment by deploying it.
+1. Convert `.env.example` to `.env` with the appropriate values set, e.g.
+   `OSO_CLOUD_API_KEY`.
+1. Install the dependencies using a Node.JS package manager, such as `npm` or
+   `yarn`.
 1. Run the app locally via:
+
    ```sh
    docker compose up --build
    ```
+
+   Note the provided `docker-compose.yml` file makes the PostgreSQL container
+   accessible from the host machine on port `5433`. This should reduce the
+   likelihood of interfering with any local PostgresSQL instances. Within Docker
+   compose network, it still runs on the standard port, `5432`.
+
+   If that port fails to work, grep for it in the provided code and change it to
+   any other value.
+
 1. Load the app at `http://localhost:3000`
-1. Click the user you want to impersonate.
-1. If the users has the requisite permissions you can:
 
-   - Add users
-   - Change users' roles
-   - Delete users
-   - Add new organizations
+From here you can create and manage:
 
-   Users without any of these features (i.e. `member`s), will just have their
-   information displayed. The white space here will be filled with the user's
-   view of the application with which this is integrated, e.g. their files and
-   folders.
-
-   You can also click the links of any users that you can manage to view the
-   application as they would, i.e. impersonation.
+- `Organization`s
+- `User`s
+- `Appointment`s
+- `Record`s
 
 ## Notes + TODOs
-
-### New apps
-
-#### Getting started
-
-Check out the `main` branch, and then start a new branch with a descriptive name
-of the new application, e.g.
-
-- `hr-like`
-- `fintech-like`
-- `crm-like`
-- `health-like`
-
-#### Repo naming
-
-When you are ready to convert the branch into a full-fledged repo, use the
-following naming convention:
-
-`sample-{app descritpion}-local-node`
-
-This indiciates that this is a sample app of some type that uses `local`
-authorization, and is built in `node`.
-
-#### README
-
-When developing new applications, start with the `README.md` from the
-`drive-like` branch, which you can also see at
-<https://github.com/osohq/sample-file-share-local-node>.
-
-#### Documentation
-
-All of these apps should contain a _ton_ of inline documentation. For an example
-of the expected documentation, see the `main` branch's `ts` files in the
-`actions` directory.
-
-### Coding style
-
-Code in this repo + derived sample apps should be semantically thorough, but a
-lack of polish is totally acceptable.
-
-The distinction here is that we must be sure that our recommendations are viable
-in the context of a modern web app. I find it incredibly frustrating when a
-reference app doesn't deal with any the complexities of producing _actual_
-software, and the lack of consideration means that the examples provided are all
-but useless when I am trying to do something.
-
-While this does mean that the apps might take longer to build, they're much
-higher quality and give us many more opportunities to develop empathy with users
-who are trying to use Oso to produce _very_ expensive applications.
-
-### global permissions
-
-Currently `global` rules have an impedance mismatch with local authorization,
-i.e. local authorization cannot authorize users' access to `global` rules. This
-will be fixed once local authorization adopts the query builder API.
 
 ### Styling
 
 TODO: Add a style to the app. Currently, the GUI is entirely unstyled HTML.
-
-I left all of the `tailwind` boilerplate in here because it seemed obnoxious to
-remove it and try to re-add it.
-
-### Contrived roles
-
-The policy is a bit over-engineered, e.g. editing and deleting users is split
-across separate permissions, even though there are currently no roles that can
-do one but not the other.
-
-### Posting policy
-
-TODO: When building, I would like to post the policy to Oso Cloud, so that
-`oso-policy.polar` locally is the authoritative source of truth.

@@ -1,0 +1,34 @@
+# Local auth configuration for the document management service.
+#
+# Each service should has its own local auth configuration file, which should be
+# provided to the user-specific Oso client.
+facts:
+  has_relation(Appointment:_, scheduled, Organization:_):
+    query: >
+      SELECT id, org FROM appointments
+
+  has_relation(Appointment:_, medical_staff, User:_):
+    query: >
+      SELECT id, medical_staff FROM appointments
+
+  has_relation(Appointment:_, patient, User:_):
+    query: >
+      SELECT id, patient FROM appointments
+
+  appointment_status(Appointment:_, String:_):
+    query: >
+      SELECT id, status::TEXT FROM appointments
+
+  has_relation(Record:_, from, Appointment:_):
+    query: >
+      SELECT id, appointment_id FROM records
+
+sql_types:
+  User: TEXT
+  Appointment: NUMERIC
+  Record: NUMERIC
+# For more details about how this interacts with other components of the system,
+# see:
+# - env_template_db_init.sql for the application's SQL schema
+# - oso_local_auth_*.yml for services' local authorization config
+# - oso_policy.polar for this application's Polar policy, for use in Oso Cloud

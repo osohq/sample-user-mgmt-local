@@ -24,8 +24,6 @@ interface UserManagerProps {
 interface UsersWActions {
   inner: ReadableUser;
   roleCurr: string;
-  onRoleChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-  onEdit: () => void;
   onDelete: () => void;
 }
 
@@ -67,10 +65,7 @@ const UserManager: React.FC<UserManagerProps> = ({ requestor }) => {
       setGlobalUsers(fetchedUsers);
       // Filter out the requestor and convert to UsersWActions
       const filteredUsers = fetchedUsers
-        .filter(
-          (user) =>
-            user.username !== requestor && (user.editRole || user.deleteUser)
-        )
+        .filter((user) => user.username !== requestor)
         .map((user, index) => ({
           inner: user,
           roleCurr: user.role,
@@ -187,7 +182,6 @@ const UserManager: React.FC<UserManagerProps> = ({ requestor }) => {
                       <th>Name</th>
                       <th>Role</th>
                       <th></th>
-                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -209,32 +203,7 @@ const UserManager: React.FC<UserManagerProps> = ({ requestor }) => {
                               {user.inner.username}
                             </Link>
                           </td>
-                          <td>
-                            {/* Allow selecting a role iff requestor has editRole */}
-                            {user.inner.editRole ? (
-                              <select
-                                name="role"
-                                value={user.roleCurr}
-                                onChange={(e) => user.onRoleChange(e)}
-                              >
-                                {roles.map((role) => (
-                                  <option key={role.name} value={role.name}>
-                                    {role.name}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <p>{user.roleCurr}</p>
-                            )}
-                          </td>
-                          <td>
-                            <button
-                              onClick={user.onEdit}
-                              disabled={!user.inner.editRole}
-                            >
-                              Edit
-                            </button>
-                          </td>
+                          <td>{user.inner.role}</td>
                           <td>
                             <button
                               onClick={user.onDelete}
