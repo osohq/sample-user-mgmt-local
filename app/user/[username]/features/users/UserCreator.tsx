@@ -24,21 +24,19 @@ interface UserCreatorProps {
  */
 const UserCreator: React.FC<UserCreatorProps> = ({ requestor }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
   const [roles, setRoles] = useState<Role[]>([]);
+  // Organizations that user can create new users on.
+  const [orgs, setOrgs] = useState<Org[]>([]);
+  // Triggers re-build of form to reset fields.
+  const [formKey, setFormKey] = useState<number>(0);
 
   // We need to provide the username of the user creating the new user to ensure
   // they're permitted to do so.
   const createUserWithCreator = createUser.bind(null, { requestor });
   const [formState, formAction] = useFormState(createUserWithCreator, null);
 
-  // Triggers re-build of form to reset fields.
-  const [formKey, setFormKey] = useState<number>(0);
-
-  // Organizations that user can create new users on.
-  const [orgs, setOrgs] = useState<Org[]>([]);
-
   const getOrgs = async () => {
+    setErrorMessage(null);
     try {
       const orgsResult = await getCreateUserOrgs(requestor);
       setOrgs(orgsResult);
@@ -62,7 +60,7 @@ const UserCreator: React.FC<UserCreatorProps> = ({ requestor }) => {
       }
     };
     initUserCreator();
-  }, []);
+  }, [requestor]);
 
   // Update users whenever new user created.
   useEffect(() => {

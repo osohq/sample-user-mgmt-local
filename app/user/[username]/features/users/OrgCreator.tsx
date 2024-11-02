@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { useFormState } from "react-dom";
 
 import { SubmitButton } from "@/lib/components";
-import { Org } from "@/lib/relations";
 import { canCreateOrg, createOrg, getCreateUserOrgs } from "@/actions/org";
 
 import UserCreator from "../users/UserCreator";

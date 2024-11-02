@@ -303,6 +303,9 @@ export async function editUsersRoleByUsername(
   requestor: string,
   updates: User[]
 ): Promise<undefined> {
+  if (updates.length === 0) {
+    return;
+  }
   const client = await pool.connect();
 
   const osoUser = { type: "User", id: requestor };
