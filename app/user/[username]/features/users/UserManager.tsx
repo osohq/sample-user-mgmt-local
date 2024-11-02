@@ -4,18 +4,21 @@ import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 
 import { User, Role } from "@/lib/relations";
+import { stringifyError } from "@/lib/result";
+import { useUsersStore } from "@/lib/users";
+
+import { getOrgRoles } from "@/actions/org";
 import {
   deleteUser,
   editUsersRoleByUsername,
   ReadableUser,
   getReadableUsersWithPermissions,
 } from "@/actions/user";
-import { stringifyError } from "@/lib/result";
+
+import { UserDbEvents } from "./UserOverview";
 
 interface UserManagerProps {
   requestor: string;
-  usersIn: ReadableUser[];
-  roles: Role[];
 }
 
 interface UsersWActions {
@@ -31,12 +34,10 @@ interface UsersWActions {
  *
  * This component receives users from `UserCreator` (`usersIn`).
  */
-const UserManager: React.FC<UserManagerProps> = ({
-  requestor,
-  usersIn,
-  roles,
-}) => {
+const UserManager: React.FC<UserManagerProps> = ({ requestor }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [roles, setRoles] = useState<Role[]>([]);
 
   // Convert `ReadableUser[]` to `FormData[]`, filtering out any users that
   // the requestor has neither edit nor delete permissions on.
@@ -56,9 +57,23 @@ const UserManager: React.FC<UserManagerProps> = ({
     );
   }
 
-  const [users, setUsers] = useState<UsersWActions[]>(
-    usersActionsFromPermissions(usersIn)
-  );
+  const setGlobalUsers = useUsersStore((state) => state.setUsers);
+  const [users, setUsers] = useState<UsersWActions[]>([]);
+
+  // Convenience function to update the form data by reaching out to the
+  // database + applying Oso list filtering.
+  async function getUsers() {
+    try {
+      const users = await getReadableUsersWithPermissions(requestor);
+      setGlobalUsers(users);
+      // Don't let the user manage their own permissions.
+      const filteredUsers = users.filter((user) => user.username !== requestor);
+      setUsers(usersActionsFromPermissions(filteredUsers));
+    } catch (e) {
+      setErrorMessage(stringifyError(e));
+    }
+  }
+
   const [orgUsersMap, setOrgUsersMap] = useState<Map<string, number[]>>(
     new Map()
   );
@@ -66,11 +81,6 @@ const UserManager: React.FC<UserManagerProps> = ({
   // Use a ref to formData so that closures built over it operate over a
   // reference.
   const usersRef = useRef(users);
-
-  // Update users whenever usersIn changes.
-  useEffect(() => {
-    setUsers(usersActionsFromPermissions(usersIn));
-  }, [usersIn]);
 
   // Whenever users change, update all dependent state.
   useEffect(() => {
@@ -91,18 +101,22 @@ const UserManager: React.FC<UserManagerProps> = ({
     setErrorMessage(null);
   }, [users]);
 
-  // Convenience function to update the form data by reaching out to the
-  // database + applying Oso list filtering.
-  async function updateUsers(requestor: string) {
-    try {
-      const users = await getReadableUsersWithPermissions(requestor);
-      // Don't let the user manage their own permissions.
-      const filteredUsers = users.filter((user) => user.username !== requestor);
-      setUsers(usersActionsFromPermissions(filteredUsers));
-    } catch (e) {
-      setErrorMessage(stringifyError(e));
-    }
-  }
+  useEffect(() => {
+    const initUserManager = async () => {
+      const unsubscribe = UserDbEvents.subscribe(() => getUsers());
+      try {
+        getUsers();
+
+        // Determine the database's values for `organization_role`.
+        const orgRoles = await getOrgRoles();
+        setRoles(orgRoles);
+        return unsubscribe;
+      } catch (e) {
+        setErrorMessage(stringifyError(e));
+      }
+    };
+    initUserManager();
+  }, []);
 
   const handleRoleChange = (
     e: React.ChangeEvent<HTMLSelectElement>,
@@ -136,7 +150,6 @@ const UserManager: React.FC<UserManagerProps> = ({
       setErrorMessage(error instanceof Error ? error.message : "Unknown error");
       return;
     }
-
     const user = usersRef.current[index];
     try {
       operation === "edit"
@@ -148,7 +161,7 @@ const UserManager: React.FC<UserManagerProps> = ({
             },
           ])
         : await deleteUser(requestor, user.inner.username);
-      await updateUsers(requestor);
+      UserDbEvents.emit();
     } catch (e) {
       setErrorMessage(stringifyError(e));
     }
@@ -172,7 +185,7 @@ const UserManager: React.FC<UserManagerProps> = ({
 
     try {
       await editUsersRoleByUsername(requestor, updatedUsers);
-      await updateUsers(requestor);
+      UserDbEvents.emit();
     } catch (e) {
       setErrorMessage(stringifyError(e));
     }

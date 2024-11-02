@@ -12,7 +12,7 @@ COPY env_template_init.sh .
 RUN chmod +x env_template_init.sh
 
 # Run the script to generate the output.sql file
-RUN /bin/sh ./env_template_init.sh
+RUN ./env_template_init.sh
 
 # Optional: Copy the output.sql to the desired location
 RUN mv db_init.sql /docker-entrypoint-initdb.d/

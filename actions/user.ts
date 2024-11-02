@@ -11,14 +11,10 @@ import { Result, stringifyError } from "@/lib/result";
  * Identifies a `User`, as well as fields describing its permissions on its
  * parent organization.
  */
-export interface UserWOrgPermissions {
-  username: string;
-  org: string;
-  role: string;
-  // Permissions
+export interface UserWOrgPermissions extends User {
   readOrg: boolean;
   createUser: boolean;
-  createDoc: boolean;
+  // Base permissions on specialized app go here.
 }
 
 /**
@@ -69,7 +65,6 @@ export async function getUserWOrgPermissions(
       ...user,
       readOrg: orgActions.includes("read"),
       createUser: orgActions.includes("create_user"),
-      createDoc: orgActions.includes("create_doc"),
     };
   } catch (error) {
     console.error("Error in getUser:", error);
@@ -83,11 +78,7 @@ export async function getUserWOrgPermissions(
  * Identifies a `User` the requestor is permitted to read, as well as fields
  * describing other permissions.
  */
-export interface ReadableUser {
-  username: string;
-  org: string;
-  role: string;
-  // Permissions
+export interface ReadableUser extends User {
   editRole: boolean;
   deleteUser: boolean;
 }

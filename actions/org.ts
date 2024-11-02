@@ -82,6 +82,8 @@ export async function createOrg(
  * @throws {Error} If there is a problem with the database connection.
  */
 export async function getCreateUserOrgs(username: string): Promise<Org[]> {
+  // Inline the condition generated from `listLocal` into a query the get the
+  // organization's names.
   const client = await pool.connect();
   try {
     const osoUser = { type: "User", id: username };
@@ -116,6 +118,6 @@ export async function getCreateUserOrgs(username: string): Promise<Org[]> {
 export async function getOrgRoles(): Promise<Role[]> {
   return query<Role>(
     pool,
-    `SELECT DISTINCT unnest(enum_range(NULL::organization_role)) AS name`
+    `SELECT DISTINCT name FROM unnest(enum_range(NULL::organization_role)) AS name`
   );
 }

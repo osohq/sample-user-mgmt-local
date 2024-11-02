@@ -5,19 +5,15 @@ import { useFormState } from "react-dom";
 
 import { SubmitButton } from "@/lib/components";
 import { Org, Role } from "@/lib/relations";
-import {
-  createUser,
-  ReadableUser,
-  getReadableUsersWithPermissions,
-} from "@/actions/user";
+import { stringifyError } from "@/lib/result";
+
+import { createUser } from "@/actions/user";
 import { getCreateUserOrgs, getOrgRoles } from "@/actions/org";
 
-import UserManager from "./UserManager";
-import { stringifyError } from "@/lib/result";
+import { OrgDbEvents, UserDbEvents } from "./UserOverview";
 
 interface UserCreatorProps {
   requestor: string;
-  orgsIn: Org[];
 }
 
 /**
@@ -26,7 +22,7 @@ interface UserCreatorProps {
  * This component receives organizations from `OrgCreator` (`orgsIn`), and
  * creates users, it passes to `UserManager`.
  */
-const UserCreator: React.FC<UserCreatorProps> = ({ requestor, orgsIn }) => {
+const UserCreator: React.FC<UserCreatorProps> = ({ requestor }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [roles, setRoles] = useState<Role[]>([]);
@@ -40,42 +36,32 @@ const UserCreator: React.FC<UserCreatorProps> = ({ requestor, orgsIn }) => {
   const [formKey, setFormKey] = useState<number>(0);
 
   // Organizations that user can create new users on.
-  const [orgs, setOrgs] = useState<Org[]>(orgsIn);
-  // Synchronize orgs with orgsIn.
-  useEffect(() => {
-    setOrgs(orgsIn);
-  }, [orgsIn]);
+  const [orgs, setOrgs] = useState<Org[]>([]);
 
-  // Users to propagate down to the manage users component.
-  const [users, setUsers] = useState<ReadableUser[]>([]);
-
-  // Convenience function to update the form data by reaching out to the
-  // database + applying Oso list filtering.
-  async function updateUsers(requestor: string) {
+  const getOrgs = async () => {
     try {
-      const users = await getReadableUsersWithPermissions(requestor);
-      // Don't let the user manage their own permissions.
-      setUsers(users.filter((user) => user.username !== requestor));
+      const orgsResult = await getCreateUserOrgs(requestor);
+      setOrgs(orgsResult);
     } catch (e) {
       setErrorMessage(stringifyError(e));
     }
-  }
+  };
 
-  // Get users + roles on initial load
   useEffect(() => {
-    const initializeCreateUserFormState = async () => {
+    const initUserCreator = async () => {
+      const unsubscribeOrgs = OrgDbEvents.subscribe(getOrgs);
       try {
-        const orgsResult = await getCreateUserOrgs(requestor);
+        getOrgs();
+
         // Determine the database's values for `organization_role`.
         const orgRoles = await getOrgRoles();
-        setOrgs(orgsResult);
         setRoles(orgRoles);
-        updateUsers(requestor);
+        return unsubscribeOrgs;
       } catch (e) {
         setErrorMessage(stringifyError(e));
       }
     };
-    initializeCreateUserFormState();
+    initUserCreator();
   }, []);
 
   // Update users whenever new user created.
@@ -84,9 +70,7 @@ const UserCreator: React.FC<UserCreatorProps> = ({ requestor, orgsIn }) => {
       return;
     }
     if (formState.success) {
-      // Refresh the page if the form submission was successful to re-fetch new
-      // data.
-      updateUsers(requestor);
+      UserDbEvents.emit();
       // Re-render form after successful submission.
       setFormKey((prevKey) => prevKey + 1);
       setErrorMessage(null);
@@ -138,7 +122,6 @@ const UserCreator: React.FC<UserCreatorProps> = ({ requestor, orgsIn }) => {
           <SubmitButton action="Create user" />
         </form>
       )}
-      <UserManager requestor={requestor} usersIn={users} roles={roles} />
     </div>
   );
 };

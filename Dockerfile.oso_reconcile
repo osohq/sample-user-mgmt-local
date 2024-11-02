@@ -9,6 +9,8 @@ FROM public.ecr.aws/osohq/reconcile:latest
 
 RUN apt-get update && apt-get install -y gettext-base
 
+WORKDIR /app
+
 # Copy the .env file, the template SQL file, and the script to the container
 COPY .env .
 # This file describes facts that should be synchronized with Oso in terms of
@@ -20,10 +22,6 @@ COPY env_template_init.sh .
 RUN chmod +x env_template_init.sh
 
 # Run the script to generate the oso_sync.yml file
-RUN /bin/sh ./env_template_init.sh
+RUN ./env_template_init.sh
 
-WORKDIR /app
-
-COPY oso_sync.yml /app/config.yaml
-
-ENTRYPOINT ["/app/reconcile", "experimental", "reconcile", "/app/config.yaml", "--perform-updates"]
+ENTRYPOINT ["/app/reconcile", "experimental", "reconcile", "/app/oso_sync.yml", "--perform-updates"]
