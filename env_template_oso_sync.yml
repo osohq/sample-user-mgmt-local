@@ -10,8 +10,7 @@ facts:
   has_role(User:_, String:_, Organization:_):
     db: user_db
     query: >
-      SELECT users.username, users.role::TEXT, users.org
-      FROM users
+      SELECT username, role::TEXT, org FROM users
 
   # Correlates `actor User` to `global` roles by treating any role assigned to a
   # user in the `_` org as a `global` role. This might work differently than you
@@ -20,11 +19,9 @@ facts:
   has_role(User:_, String:_):
     db: user_db
     query: >
-      SELECT
-        DISTINCT users.username, users.role::TEXT
-      FROM
-        users
-      WHERE users.org = '_root'
+      SELECT username, role::TEXT
+      FROM users
+      WHERE org = '_root'
 
   # Provides the `parent` relationship between `actor User` and `resource
   # Organization`.

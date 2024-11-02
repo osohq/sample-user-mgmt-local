@@ -8,12 +8,12 @@ export class DatabaseEvents {
     this.listeners = new Set();
   }
 
-  subscribe(listener: Listener): () => void {
-    this.listeners.add(listener);
+  subscribe(listener: Listener[]): () => void {
+    listener.forEach((listener) => this.listeners.add(listener));
 
     // Return unsubscribe function
     return () => {
-      this.listeners.delete(listener);
+      listener.forEach((listener) => this.listeners.delete(listener));
     };
   }
 

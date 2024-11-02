@@ -4,8 +4,9 @@ import React, { useState, useEffect } from "react";
 import { useFormState } from "react-dom";
 
 import { SubmitButton } from "@/lib/components";
-import { Org, Role } from "@/lib/relations";
+import { Org, Role, User } from "@/lib/relations";
 import { stringifyError } from "@/lib/result";
+import { UsersState, useUsersStore } from "@/lib/users";
 
 import { createUser } from "@/actions/user";
 import { getCreateUserOrgs, getOrgRoles } from "@/actions/org";
@@ -35,6 +36,8 @@ const UserCreator: React.FC<UserCreatorProps> = ({ requestor }) => {
   const createUserWithCreator = createUser.bind(null, { requestor });
   const [formState, formAction] = useFormState(createUserWithCreator, null);
 
+  const users = useUsersStore((state: UsersState) => state.users);
+
   const getOrgs = async () => {
     setErrorMessage(null);
     try {
@@ -47,7 +50,7 @@ const UserCreator: React.FC<UserCreatorProps> = ({ requestor }) => {
 
   useEffect(() => {
     const initUserCreator = async () => {
-      const unsubscribeOrgs = OrgDbEvents.subscribe(getOrgs);
+      const unsubscribeOrgs = OrgDbEvents.subscribe([getOrgs]);
       try {
         getOrgs();
 
@@ -113,6 +116,17 @@ const UserCreator: React.FC<UserCreatorProps> = ({ requestor }) => {
               {roles.map((role) => (
                 <option key={role.name} value={role.name}>
                   {role.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="manager">Manager:</label>
+            <select id="manager" name="manager">
+              <option key="null" value=""></option>
+              {users.map((user) => (
+                <option key={user.username} value={user.username}>
+                  {user.username}
                 </option>
               ))}
             </select>

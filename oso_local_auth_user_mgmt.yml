@@ -6,8 +6,7 @@ facts:
   # Correlates `actor User` to `resource Organization` roles.
   has_role(User:_, String:_, Organization:_):
     query: >
-      SELECT users.username, users.role::TEXT, users.org
-      FROM users
+      SELECT username, role::TEXT, org FROM users
 
   # Correlates `actor User` to `global` roles by treating any role assigned to a
   # user in the `_root` org as a `global` role. This might work differently than you
@@ -16,9 +15,8 @@ facts:
   has_role(User:_, String:_):
     query: >
       SELECT
-        DISTINCT users.username, users.role::TEXT
-      FROM
-        users
+        DISTINCT username, role::TEXT
+      FROM users
       WHERE users.org = '_root'
 
   # Provides the `parent` relationship between `actor User` and `resource
@@ -26,9 +24,24 @@ facts:
   has_relation(User:_, parent, Organization:_):
     query: SELECT username, org FROM users
 
+  # Correlates `actor User` to `resource Document` roles.
+  has_role(User:_, String:_, Document:_):
+    query: >
+      SELECT username, role::TEXT, document_id FROM document_user_roles
+
+  # Provides the `belongs_to` relationship between `resource Document` and
+  # `resource Organization`.
+  has_relation(Document:_, belongs_to, Organization:_):
+    query: SELECT id, org FROM documents
+
+  # Expresses the public attribute of `resource Document`s.
+  is_public(Document:_):
+    query: SELECT id FROM documents WHERE public
+
 sql_types:
   User: TEXT
   Organization: TEXT
+  Document: NUMERIC
 # For more details about how this interacts with other components of the system,
 # see:
 # - env_template_db_init.sql for the application's SQL schema

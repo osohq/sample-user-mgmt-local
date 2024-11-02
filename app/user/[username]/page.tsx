@@ -4,6 +4,7 @@ import { getUserWOrgPermissions, UserWOrgPermissions } from "@/actions/user";
 import { stringifyError } from "@/lib/result";
 
 import UserOverview from "./features/users/UserOverview";
+import CrmOverview from "./features/crm/CrmOverview";
 
 interface UserProps {
   params: { username: string };
@@ -53,12 +54,46 @@ export default async function UserPage({ params }: UserProps) {
                 </tr>
               </tbody>
             </table>
+            <div>
+              <table>
+                <tbody>
+                  <tr>
+                    <th>Org roles</th>
+                    <th>Desc</th>
+                  </tr>
+                  <tr>
+                    <td>admin</td>
+                    <td>Org-specific superuser</td>
+                  </tr>
+                  <tr>
+                    <td>analyst</td>
+                    <td>
+                      Read-only access to all details of all opportunities
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>deal_desk</td>
+                    <td>
+                      Can be assigned opportunities in the{" "}
+                      <strong>negotiating</strong> stage.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>sales</td>
+                    <td>
+                      Can be assigned territories, opportunities. Can manage
+                      opportunities within their assigned territories.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
             <div className="permissions">
               <table>
                 <thead>
                   <tr>
                     <th>
-                      <strong>Permission</strong>
+                      <strong>Org Permission</strong>
                     </th>
                     <th>
                       <strong>Value</strong>
@@ -81,13 +116,11 @@ export default async function UserPage({ params }: UserProps) {
                     <td>{user.createUser.toString()}</td>
                     <td>Create new users.</td>
                   </tr>
-                  {/* Include row for app permissions here
                   <tr>
-                    <td>Create doc</td>
-                    <td>{user.createDoc.toString()}</td>
-                    <td>Create new docs.</td>
+                    <td>Create opportunities</td>
+                    <td>{user.createOpportunity.toString()}</td>
+                    <td>Create new opportunities.</td>
                   </tr>
-                  */}
                 </tbody>
               </table>
             </div>
@@ -96,7 +129,7 @@ export default async function UserPage({ params }: UserProps) {
             </div>
           </div>
           <div id="app" style={{ flex: 1 }}>
-            {/* Overview of application goes here. */}
+            <CrmOverview user={user} />
           </div>
         </div>
       )}

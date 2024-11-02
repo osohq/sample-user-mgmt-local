@@ -1,0 +1,39 @@
+# Local auth configuration for the document management service.
+#
+# Each service should has its own local auth configuration file, which should be
+# provided to the user-specific Oso client.
+facts:
+  has_role(User:_, responsible, Territory:_):
+    query: >
+      SELECT username, territory FROM sales_territory_manager
+
+  has_relation(Territory:_, ancestor, Territory:_):
+    query: >
+      SELECT descendant_id, ancestor_id FROM territory_hierarchy
+
+  has_relation(Opportunity:_, assignee, User:_):
+    query: >
+      SELECT name, assignee FROM opportunities
+
+  has_relation(Opportunity:_, territory, Territory:_):
+    query: >
+      SELECT name, territory FROM opportunities
+
+  has_relation(Opportunity:_, org, Organization:_):
+    query: >
+      SELECT name, organization FROM opportunities
+
+  in_stage(Opportunity:_, String:_):
+    query: >
+      SELECT name, stage::TEXT FROM opportunities
+
+sql_types:
+  Territory: TEXT
+  Opportunity: TEXT
+  User: TEXT
+  Organization: TEXT
+# For more details about how this interacts with other components of the system,
+# see:
+# - env_template_db_init.sql for the application's SQL schema
+# - oso_local_auth_*.yml for services' local authorization config
+# - oso_policy.polar for this application's Polar policy, for use in Oso Cloud

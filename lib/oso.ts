@@ -14,6 +14,13 @@ export const osoUserMgmt = new Oso(osoHost, key, {
 });
 
 /**
+ * Oso client for user management service.
+ */
+export const osoCrmMgmt = new Oso(osoHost, key, {
+  dataBindings: "/app/oso_local_auth_crm.yml",
+});
+
+/**
  * Convenience function to authorizes `user` to perform `permission` on
  * `resource` using local authorization.
  *

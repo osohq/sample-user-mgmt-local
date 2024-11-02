@@ -14,7 +14,7 @@ import { Result, stringifyError } from "@/lib/result";
 export interface UserWOrgPermissions extends User {
   readOrg: boolean;
   createUser: boolean;
-  // Base permissions on specialized app go here.
+  createOpportunity: boolean;
 }
 
 /**
@@ -38,7 +38,7 @@ export async function getUserWOrgPermissions(
   const client = await pool.connect();
   try {
     const userRes = await client.query<User>(
-      `SELECT username, org, role
+      `SELECT username, org, role, manager
       FROM users
       WHERE username = $1`,
       [username]
@@ -59,12 +59,17 @@ export async function getUserWOrgPermissions(
     ) AS actions`;
 
     const res = await client.query<{ actions: string[] }>(orgActionsQuery);
-    const orgActions = res.rows[0].actions;
+
+    let orgActions = res.rows[0].actions;
+    if (!orgActions) {
+      orgActions = [];
+    }
 
     return {
       ...user,
       readOrg: orgActions.includes("read"),
       createUser: orgActions.includes("create_user"),
+      createOpportunity: orgActions.includes("create_opportunity"),
     };
   } catch (error) {
     console.error("Error in getUser:", error);
@@ -80,7 +85,7 @@ export async function getUserWOrgPermissions(
  */
 export interface ReadableUser extends User {
   editRole: boolean;
-  deleteUser: boolean;
+  assignTerritory: boolean;
 }
 
 /**
@@ -120,9 +125,10 @@ export async function getReadableUsersWithPermissions(
       username: string;
       role: string;
       org: string;
+      manager: string | undefined;
       actions: string[];
     }>(
-      `SELECT users.username, role, org, actions_per_user.actions
+      `SELECT users.username, role, org, manager, actions_per_user.actions
       FROM (
         -- Get all actions for each user
         SELECT username, array_agg(actions) AS actions
@@ -136,8 +142,8 @@ export async function getReadableUsersWithPermissions(
 
     return usersWActions.rows.map((user) => ({
       ...user,
+      assignTerritory: user.actions.includes("assign_territory"),
       editRole: user.actions.includes("edit_role"),
-      deleteUser: user.actions.includes("delete"),
     }));
   } catch (error) {
     console.error("Error in getReadableUsersWithPermissions:", error);
@@ -173,6 +179,7 @@ export async function createUser(
     username: formData.get("username")! as string,
     org: formData.get("organization")! as string,
     role: formData.get("role")! as string,
+    manager: formData.get("manager") as string | null,
   };
 
   const client = await pool.connect();
@@ -195,9 +202,13 @@ export async function createUser(
       };
     }
 
+    if (!data.manager) {
+      data.manager = null;
+    }
+
     await client.query(
-      `INSERT INTO users (username, org, role) VALUES ($1, $2, $3::organization_role);`,
-      [data.username, data.org, data.role]
+      "INSERT INTO users (username, org, role, manager) VALUES ($1, $2, $3::organization_role, $4);",
+      [data.username, data.org, data.role, data.manager]
     );
 
     const user = {
@@ -210,74 +221,19 @@ export async function createUser(
     await oso.batch((tx) => {
       tx.insert(["has_role", user, data.role, org]);
       tx.insert(["has_relation", user, "parent", org]);
+      if (data.manager) {
+        tx.insert([
+          "has_relation",
+          user,
+          "manager",
+          { type: "User", id: data.manager },
+        ]);
+      }
     });
 
     return { success: true, value: data.username };
   } catch (error) {
     return { success: false, error: stringifyError(error) };
-  } finally {
-    client.release();
-  }
-}
-
-/**
- * Deletes the specified user.
- *
- * Requires `requestor` to have the `delete` permission for the specified user.
- *
- * ## Oso documentation
- * Demonstrates a standard authorized endpoint––ensuring the user has a specific
- * permission, and permitting it to occur only if they do.
- *
- * Also demonstrates using `batch` to synchronize changes to Oso's centralized
- * authorization data.
- *
- * @throws {Error} If there is a problem with the database connection or
- * authorization fails.
- */
-export async function deleteUser(
-  requestor: string,
-  username: string
-): Promise<undefined> {
-  const client = await pool.connect();
-  try {
-    const auth = await authorizeUser(oso, client, requestor, "delete", {
-      type: "User",
-      id: username,
-    });
-    if (!auth) {
-      throw new Error(`not permitted to delete User ${username}`);
-    }
-
-    const res = await client.query<{ org: string; role: string }>(
-      `DELETE FROM users WHERE username = $1 RETURNING org, role;`,
-      [username]
-    );
-    if (res.rowCount !== 1) {
-      throw new Error(`cannot find user ${username}`);
-    }
-    const resReturnValues = res.rows[0];
-
-    const user = {
-      type: "User",
-      id: username,
-    };
-    const org = {
-      type: "Organization",
-      id: resReturnValues.org,
-    };
-
-    // Propagate user roles to Oso's centralized authorization data store for
-    // other services to use.
-    await oso.batch((tx) => {
-      tx.delete(["has_role", user, resReturnValues.role, org]);
-      tx.delete(["has_relation", user, "parent", org]);
-    });
-
-    return;
-  } catch (error) {
-    console.error("Error in deleteUser:", error);
-    throw error;
   } finally {
     client.release();
   }
@@ -412,7 +368,7 @@ export async function getOrgUsers(
       .evaluateLocalFilter("username", userVar);
 
     const orgUsers = await client.query<User>(
-      `SELECT username, org, role
+      `SELECT username, org, role, manager
         FROM users
         WHERE ${readableUsersCond}
         ORDER BY username`

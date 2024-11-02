@@ -40,7 +40,7 @@ const UserOverview: React.FC<UserOverview> = ({ user }) => {
 
   useEffect(() => {
     const initUserManager = async () => {
-      const unsubscribe = UserDbEvents.subscribe(getUsers);
+      const unsubscribe = UserDbEvents.subscribe([getUsers]);
       try {
         await Promise.all([getUsers()]);
       } catch (e) {

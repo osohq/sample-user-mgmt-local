@@ -8,11 +8,7 @@ import { stringifyError } from "@/lib/result";
 import { useUsersStore } from "@/lib/users";
 
 import { getOrgRoles } from "@/actions/org";
-import {
-  deleteUser,
-  editUsersRoleByUsername,
-  ReadableUser,
-} from "@/actions/user";
+import { editUsersRoleByUsername, ReadableUser } from "@/actions/user";
 
 import { UserDbEvents } from "./UserOverview";
 
@@ -27,7 +23,6 @@ interface UsersWActions {
   roleCurr: Role["name"];
   onRoleChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   onEdit: () => void;
-  onDelete: () => void;
 }
 
 const UserTable: React.FC<{
@@ -41,6 +36,7 @@ const UserTable: React.FC<{
       <tr>
         <th>Name</th>
         <th>Role</th>
+        <th>Manager</th>
         <th>Actions</th>
       </tr>
     </thead>
@@ -76,12 +72,10 @@ const UserTable: React.FC<{
                 <>{user.roleCurr}</>
               )}
             </td>
+            <td>{user.inner.manager}</td>
             <td>
               {user.inner.editRole && (
                 <button onClick={user.onEdit}>Edit role</button>
-              )}
-              {user.inner.deleteUser && (
-                <button onClick={user.onDelete}>Delete user</button>
               )}
             </td>
           </tr>
@@ -136,7 +130,6 @@ const UserManager: React.FC<UserManagerProps> = ({ requestor }) => {
             onRoleChange: (e: React.ChangeEvent<HTMLSelectElement>) =>
               user.editRole ? handleRoleChange(e, index) : {},
             onEdit: user.editRole ? () => handleEdit(index) : () => {},
-            onDelete: user.deleteUser ? () => handleDelete(index) : () => {},
           }));
 
         setState((prev) => ({ roles, users, errorMessage: null }));
@@ -179,10 +172,9 @@ const UserManager: React.FC<UserManagerProps> = ({ requestor }) => {
               username: user.inner.username,
               role: user.roleCurr,
               org: user.inner.org,
+              manager: user.inner.manager,
             },
           ]);
-        } else {
-          await deleteUser(requestor, user.inner.username);
         }
 
         UserDbEvents.emit();
@@ -207,6 +199,7 @@ const UserManager: React.FC<UserManagerProps> = ({ requestor }) => {
         username: user.inner.username,
         org: user.inner.org,
         role: user.roleCurr,
+        manager: user.inner.manager,
       }));
 
     try {
