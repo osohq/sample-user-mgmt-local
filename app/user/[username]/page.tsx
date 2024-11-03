@@ -3,7 +3,7 @@ import React from "react";
 import { getUserWOrgPermissions, UserWOrgPermissions } from "@/actions/user";
 import { stringifyError } from "@/lib/result";
 
-import OrgCreator from "./features/organizations/OrgCreator";
+import UserOverview from "./features/users/UserOverview";
 
 interface UserProps {
   params: { username: string };
@@ -92,7 +92,7 @@ export default async function UserPage({ params }: UserProps) {
               </table>
             </div>
             <div>
-              <OrgCreator requestor={user.username} />
+              <UserOverview user={user} />
             </div>
           </div>
           <div id="app" style={{ flex: 1 }}>

@@ -4,18 +4,21 @@ import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 
 import { User, Role } from "@/lib/relations";
+import { stringifyError } from "@/lib/result";
+import { useUsersStore } from "@/lib/users";
+
+import { getOrgRoles } from "@/actions/org";
 import {
   deleteUser,
   editUsersRoleByUsername,
   ReadableUser,
   getReadableUsersWithPermissions,
 } from "@/actions/user";
-import { stringifyError } from "@/lib/result";
+
+import { UserDbEvents } from "./UserOverview";
 
 interface UserManagerProps {
   requestor: string;
-  usersIn: ReadableUser[];
-  roles: Role[];
 }
 
 interface UsersWActions {
@@ -31,20 +34,43 @@ interface UsersWActions {
  *
  * This component receives users from `UserCreator` (`usersIn`).
  */
-const UserManager: React.FC<UserManagerProps> = ({
-  requestor,
-  usersIn,
-  roles,
-}) => {
+const UserManager: React.FC<UserManagerProps> = ({ requestor }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [users, setUsers] = useState<UsersWActions[]>([]);
+  const setGlobalUsers = useUsersStore((state) => state.setUsers);
 
-  // Convert `ReadableUser[]` to `FormData[]`, filtering out any users that
-  // the requestor has neither edit nor delete permissions on.
-  function usersActionsFromPermissions(users: ReadableUser[]): UsersWActions[] {
-    return (
-      users
-        // Filter out users without edit or delete permissions
-        .filter((user) => user.editRole || user.deleteUser)
+  // Use a ref to formData so that closures built over it operate over a
+  // reference.
+  const usersRef = useRef(users);
+
+  // Group users by organization
+  const orgUsersMap = React.useMemo(() => {
+    usersRef.current = users;
+    const map = new Map<string, number[]>();
+    users.forEach((user, idx) => {
+      const org = user.inner.org;
+      if (!map.has(org)) {
+        map.set(org, []);
+      }
+      map.get(org)!.push(idx);
+    });
+    return map;
+  }, [users]);
+
+  // Convenience function to update the form data by reaching out to the
+  // database + applying Oso list filtering.
+  const getUsers = async () => {
+    setErrorMessage(null);
+    try {
+      const fetchedUsers = await getReadableUsersWithPermissions(requestor);
+      setGlobalUsers(fetchedUsers);
+      // Filter out the requestor and convert to UsersWActions
+      const filteredUsers = fetchedUsers
+        .filter(
+          (user) =>
+            user.username !== requestor && (user.editRole || user.deleteUser)
+        )
         .map((user, index) => ({
           inner: user,
           roleCurr: user.role,
@@ -52,57 +78,26 @@ const UserManager: React.FC<UserManagerProps> = ({
             user.editRole ? handleRoleChange(e, index) : {},
           onEdit: user.editRole ? () => handleEdit(index) : () => {},
           onDelete: user.deleteUser ? () => handleDelete(index) : () => {},
-        }))
-    );
-  }
-
-  const [users, setUsers] = useState<UsersWActions[]>(
-    usersActionsFromPermissions(usersIn)
-  );
-  const [orgUsersMap, setOrgUsersMap] = useState<Map<string, number[]>>(
-    new Map()
-  );
-
-  // Use a ref to formData so that closures built over it operate over a
-  // reference.
-  const usersRef = useRef(users);
-
-  // Update users whenever usersIn changes.
-  useEffect(() => {
-    setUsers(usersActionsFromPermissions(usersIn));
-  }, [usersIn]);
-
-  // Whenever users change, update all dependent state.
-  useEffect(() => {
-    // Keep the ref updated with the latest state
-    usersRef.current = users;
-
-    // Ensure the map of orgs to users is consistent.
-    const map: Map<string, number[]> = new Map();
-    users.map((user, index) => {
-      if (!map.has(user.inner.org)) {
-        map.set(user.inner.org, []);
-      }
-      map.get(user.inner.org)!.push(index);
-    });
-    setOrgUsersMap(map);
-
-    // Reset error message.
-    setErrorMessage(null);
-  }, [users]);
-
-  // Convenience function to update the form data by reaching out to the
-  // database + applying Oso list filtering.
-  async function updateUsers(requestor: string) {
-    try {
-      const users = await getReadableUsersWithPermissions(requestor);
-      // Don't let the user manage their own permissions.
-      const filteredUsers = users.filter((user) => user.username !== requestor);
-      setUsers(usersActionsFromPermissions(filteredUsers));
+        }));
+      setUsers(filteredUsers);
     } catch (e) {
       setErrorMessage(stringifyError(e));
     }
-  }
+  };
+
+  useEffect(() => {
+    const initUserManager = async () => {
+      const unsubscribe = UserDbEvents.subscribe(getUsers);
+      try {
+        await Promise.all([getUsers(), getOrgRoles().then(setRoles)]);
+      } catch (e) {
+        setErrorMessage(stringifyError(e));
+      }
+      return unsubscribe;
+    };
+
+    initUserManager();
+  }, [requestor]);
 
   const handleRoleChange = (
     e: React.ChangeEvent<HTMLSelectElement>,
@@ -113,17 +108,6 @@ const UserManager: React.FC<UserManagerProps> = ({
     setUsers(newFormData);
   };
 
-  // Ensure that there is only one pending change when modifying a single user.
-  function ensureOnePendingChange(exceptIndex: number): void {
-    usersRef.current.forEach((user, index) => {
-      if (user.inner.role !== user.roleCurr && exceptIndex !== index) {
-        throw new Error(
-          `Cannot edit or delete individual users with multiple users' changes pending. Try 'Save changed roles'.`
-        );
-      }
-    });
-  }
-
   // Edit + Delete buttons
   async function handleSingleUserOperation(
     requestor: string,
@@ -131,14 +115,15 @@ const UserManager: React.FC<UserManagerProps> = ({
     operation: "edit" | "delete"
   ) {
     try {
-      ensureOnePendingChange(index);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unknown error");
-      return;
-    }
+      usersRef.current.forEach((user, thisIndex) => {
+        if (user.inner.role !== user.roleCurr && index !== thisIndex) {
+          throw new Error(
+            `Cannot edit or delete individual users with multiple users' changes pending. Try 'Save changed roles'.`
+          );
+        }
+      });
 
-    const user = usersRef.current[index];
-    try {
+      const user = usersRef.current[index];
       operation === "edit"
         ? await editUsersRoleByUsername(requestor, [
             {
@@ -148,7 +133,7 @@ const UserManager: React.FC<UserManagerProps> = ({
             },
           ])
         : await deleteUser(requestor, user.inner.username);
-      await updateUsers(requestor);
+      UserDbEvents.emit();
     } catch (e) {
       setErrorMessage(stringifyError(e));
     }
@@ -172,7 +157,7 @@ const UserManager: React.FC<UserManagerProps> = ({
 
     try {
       await editUsersRoleByUsername(requestor, updatedUsers);
-      await updateUsers(requestor);
+      UserDbEvents.emit();
     } catch (e) {
       setErrorMessage(stringifyError(e));
     }
