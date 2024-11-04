@@ -81,30 +81,32 @@ resource Record {
   "read" if "read" on "from";
 }
 
-# Medical staff can view the internal portion of a record if:
-# - There exists an appointment with the patient for which they are the
-#   medical_staff
-# - The record was created from an appointment in the same organization as their
-#   appointment with the patient
-has_permission(user: User, "read.internal", record: Record) if
-  org matches Organization
-  and has_role(user, "medical_staff", org)
-  # Introduce the patient for which this record was created
-  and other_appointment matches Appointment
-  and has_relation(record, "from", other_appointment)
-  and patient matches User
-  and has_relation(other_appointment, "patient", patient)
-  and has_relation(other_appointment, "scheduled", org)
-  # If this user is the medical_staff for a scheduled or complete appointment
-  # with this patient
-  and user_appointment matches Appointment
-  and has_relation(user_appointment, "patient", patient)
-  and has_relation(user_appointment, "scheduled", org)
-  and has_relation(user_appointment, "medical_staff", user)
+# This record is a record of this patient's.
+patient_record(patient: User, record: Record) if
+  appointment matches Appointment
+  and has_relation(record, "from", appointment)
+  and has_relation(appointment, "patient", patient);
+
+# This appointment was not canceled and this user is the appointment's medical staff.
+medical_staff_for_appointment(medical_staff: User, appointment: Appointment) if
+  has_relation(appointment, "medical_staff", medical_staff)
   and (
-    appointment_status(user_appointment, "scheduled")
-    or appointment_status(user_appointment, "completed")
+    appointment_status(appointment, "scheduled")
+    or appointment_status(appointment, "completed")
   );
+
+# User's can "read.internal" on a record if the record belongs to a patient for
+# which they are or have been scheduled to be the medical staff of.
+has_permission(user: User, "read.internal", record: Record) if
+  # The record belongs to this patient.
+  patient matches User
+  and patient_record(patient, record)
+  # There exists an appointment for which:
+  # - The user is the medical staff
+  # - The patient is the patient
+  and appointment matches Appointment
+  and has_relation(appointment, "patient", patient)
+  and medical_staff_for_appointment(user, appointment);
 
 # For more details about how this interacts with other components of the system,
 # see:
