@@ -52,6 +52,7 @@ actor User {
     # ReBAC, which we can identify because all of the permissions are based on
     # the user's relationship to `relations` member.
     "read" if "member" on "parent";
+
     "edit_role" if "admin" on "parent";
     "delete" if "admin" on "parent";
 }
