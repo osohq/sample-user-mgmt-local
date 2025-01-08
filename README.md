@@ -22,6 +22,8 @@ be managed as a branch of this repo.
 | App                                                                   | Branch       |
 | --------------------------------------------------------------------- | ------------ |
 | [File sharing](https://github.com/osohq/sample-file-share-local-node) | `drive-like` |
+| [CRM](https://github.com/osohq/sample-crm-local-node)                 | `crm-like`   |
+| [EMR](https://github.com/osohq/sample-emr-local-node)                 | `emr-like`   |
 
 When making changes to the full-fledged sample apps, you can push to their repo
 using the appropriate branch, e.g. to push changes on `drive-like` to the file
@@ -99,8 +101,6 @@ of the new application, e.g.
 
 - `hr-like`
 - `fintech-like`
-- `crm-like`
-- `health-like`
 
 #### Repo naming
 
